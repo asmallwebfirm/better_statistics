@@ -1,0 +1,100 @@
+<?php
+
+/**
+ * @file
+ * Drupal hook implementations for the Better Statistics module.
+ */
+
+
+/**
+ * Implements hook_schema_alter().
+ *
+ * Reflects the changes we made at install-time in the accesslog schema.
+ */
+function better_statistics_schema_alter(&$schema) {
+  // Fetch the fields defined by this module.
+  module_load_include('inc', 'better_statistics', 'better_statistics.helpers');
+  $fields = _better_statistics_define_fields();
+
+  // For each field defined, add it to the schema.
+  foreach ($fields as $name => $field) {
+    $schema['accesslog']['fields'][$name] = $field;
+  }
+}
+
+
+/** 
+ * Implements hook_module_implements_alter().
+ *
+ * Ensures this module fires before Statistics' exit hook so that we don't
+ * double up on data. Note we're not removing Statistics' hook entirely because
+ * Statistics also handles node count data.
+ */
+function better_statistics_module_implements_alter(&$implementations, $hook) {
+  if ($hook == 'exit') {
+    // Ensure our hook fires before statistics.
+    $implementations['better_statistics'] = -1;
+  }
+}
+
+
+/**
+ * Implements hook_exit().
+ *
+ * Gathers additional data and inserts our data into accesslog.
+ */
+function better_statistics_exit() {
+  global $user;
+
+  // Determine the cache hit/miss value.
+  $cached = NULL;
+  $headers = headers_list();
+  foreach ($headers as $header) {
+    if (strpos($header, 'X-Drupal-Cache:') !== FALSE) {
+      $cached = trim(substr($header, 15));
+      break;
+    }
+  }
+
+  // Determine and limit the user-agent value.
+  $user_agent = trim($_SERVER['HTTP_USER_AGENT']);
+  if (strlen($user_agent) > 255) {
+    $user_agent = substr($user_agent, 0, 255);
+  }
+
+  // Write our own (but mostly the same) data to accesslog.
+  // @see statistics_exit()
+  if (variable_get('statistics_enable_access_log', 0)) {
+    drupal_bootstrap(DRUPAL_BOOTSTRAP_SESSION);
+    include_once DRUPAL_ROOT . '/includes/unicode.inc';
+    db_insert('accesslog')
+      ->fields(array(
+        'title' => truncate_utf8(strip_tags(drupal_get_title()), 255),
+        'path' => truncate_utf8($_GET['q'], 255),
+        'url' => isset($_SERVER['HTTP_REFERER']) ? $_SERVER['HTTP_REFERER'] : '',
+        'hostname' => ip_address(),
+        'uid' => $user->uid,
+        'sid' => session_id(),
+        'timer' => (int) timer_read('page'),
+        'timestamp' => REQUEST_TIME,
+        'cache' => $cached,
+        'user_agent' => $user_agent,
+      ))
+      ->execute();
+  }
+
+  // Keep statistics from writing additional data to the accesslog.
+  global $conf;
+  $conf['statistics_enable_access_log'] = FALSE;
+}
+
+
+/**
+ * Implements hook_views_api().
+ */
+function better_statistics_views_api() {
+  return array(
+    'api' => 3,
+    'path' => drupal_get_path('module', 'better_statistics') . '/views',
+  );
+}
