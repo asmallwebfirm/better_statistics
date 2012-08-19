@@ -57,10 +57,7 @@ function better_statistics_exit() {
   }
 
   // Determine and limit the user-agent value.
-  $user_agent = trim($_SERVER['HTTP_USER_AGENT']);
-  if (strlen($user_agent) > 255) {
-    $user_agent = substr($user_agent, 0, 255);
-  }
+  $user_agent = truncate_utf8($_SERVER['HTTP_USER_AGENT'], 255);
 
   // Write our own (but mostly the same) data to accesslog.
   // @see statistics_exit()
