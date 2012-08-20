@@ -23,21 +23,6 @@ function better_statistics_schema_alter(&$schema) {
 }
 
 
-/** 
- * Implements hook_module_implements_alter().
- *
- * Ensures this module fires before Statistics' exit hook so that we don't
- * double up on data. Note we're not removing Statistics' hook entirely because
- * Statistics also handles node count data.
- */
-function better_statistics_module_implements_alter(&$implementations, $hook) {
-  if ($hook == 'exit') {
-    // Ensure our hook fires before statistics.
-    $implementations['better_statistics'] = -1;
-  }
-}
-
-
 /**
  * Implements hook_exit().
  *
@@ -46,38 +31,47 @@ function better_statistics_module_implements_alter(&$implementations, $hook) {
 function better_statistics_exit() {
   global $user;
 
-  // Determine the cache hit/miss value.
-  $cached = NULL;
-  $headers = headers_list();
-  foreach ($headers as $header) {
-    if (strpos($header, 'X-Drupal-Cache:') !== FALSE) {
-      $cached = trim(substr($header, 15));
-      break;
-    }
-  }
-
-  // Determine and limit the user-agent value.
-  $user_agent = truncate_utf8($_SERVER['HTTP_USER_AGENT'], 255);
+  drupal_bootstrap(DRUPAL_BOOTSTRAP_PATH);
 
   // Write our own (but mostly the same) data to accesslog.
   // @see statistics_exit()
-  if (variable_get('statistics_enable_access_log', 0)) {
-    drupal_bootstrap(DRUPAL_BOOTSTRAP_SESSION);
-    include_once DRUPAL_ROOT . '/includes/unicode.inc';
-    db_insert('accesslog')
-      ->fields(array(
-        'title' => truncate_utf8(strip_tags(drupal_get_title()), 255),
-        'path' => truncate_utf8($_GET['q'], 255),
-        'url' => isset($_SERVER['HTTP_REFERER']) ? $_SERVER['HTTP_REFERER'] : '',
-        'hostname' => ip_address(),
-        'uid' => $user->uid,
-        'sid' => session_id(),
-        'timer' => (int) timer_read('page'),
-        'timestamp' => REQUEST_TIME,
-        'cache' => $cached,
-        'user_agent' => $user_agent,
-      ))
-      ->execute();
+  if ((variable_get('statistics_enable_access_log', 0)) && (module_invoke('throttle', 'status') == 0)) {
+    // Core statistics accesslog values.
+    $insert_values = array(
+      'title' => strip_tags(drupal_get_title()),
+      'path' => $_GET['q'],
+      'url' => referer_uri(),
+      'hostname' => ip_address(),
+      'uid' => $user->uid,
+      'sid' => session_id(),
+      'timer' => timer_read('page'),
+      'timestamp' => time(),
+    );
+
+    // Determine the cache hit/miss value. We must manually include the helper
+    // file here because drupal_get_path isn't bootstrapped yet.
+    require_once(dirname(__FILE__) . '/better_statistics.helpers.inc');
+    $insert_values['cache'] = _better_statistics_page_is_cached();
+
+    // Determine and limit the user-agent value.
+    $insert_values['user_agent'] = $_SERVER['HTTP_USER_AGENT'];
+    if (strlen($insert_values['user_agent']) > 255) {
+      $insert_values['user_agent'] = substr($fields['user_agent'], 0, 255);
+    }
+
+    // Insert placeholders.
+    $placeholders = "'%s', '%s', '%s', '%s', %d, '%s', %d, %d, '%s', '%s'";
+
+    // To insert a NULL value into the DB for cache, we unset the value here.
+    if ($insert_values['cache'] === NULL) {
+      unset($insert_values['cache']);
+      $placeholders = substr($placeholders, 0, -6);
+    }
+
+    // Format the query fields and values.
+    $insert_fields = trim(implode(', ', array_keys($insert_values)));
+
+    db_query("INSERT INTO {accesslog} ($insert_fields) VALUES ($placeholders)", $insert_values);
   }
 
   // Keep statistics from writing additional data to the accesslog.
@@ -91,7 +85,7 @@ function better_statistics_exit() {
  */
 function better_statistics_views_api() {
   return array(
-    'api' => 3,
+    'api' => 2,
     'path' => drupal_get_path('module', 'better_statistics') . '/views',
   );
 }

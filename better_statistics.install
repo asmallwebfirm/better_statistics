@@ -18,11 +18,14 @@ function better_statistics_install() {
 
   // For each field defined, add it to the accesslog.
   foreach ($fields as $name => $field) {
-    if (!db_field_exists('accesslog', $name)) {
-      db_add_field('accesslog', $name, $field);
-    }
+    $return[$name] = array();
+    db_add_field($return[$name], 'accesslog', $name, $field);
   }
+
+  // Update this module's weight to something below Statistics' weight.
+  db_query("UPDATE {system} SET weight = -1 WHERE name = 'better_statistics'");
 }
+
 
 /**
  * Implements hook_uninstall().
@@ -36,8 +39,7 @@ function better_statistics_uninstall() {
 
   // For each field defined, remove it from the accesslog table.
   foreach ($fields as $name => $field) {
-    if (db_field_exists('accesslog', $name)) {
-      db_drop_field('accesslog', $name);
-    }
+    $return[$name] = array();
+    db_drop_field($return[$name], 'accesslog', $name, $field);
   }
 }

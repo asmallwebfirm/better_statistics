@@ -96,3 +96,34 @@ function _better_statistics_views_field($field) {
 
   return $views_info;
 }
+
+
+/**
+ * Returns the cache status for the current page load.
+ */
+function _better_statistics_page_is_cached() {
+  $cache_status = NULL;
+  global $user;
+
+  // Don't bother if caching isn't even enabled.
+  if (!variable_get('cache', 0)) {
+    return $cache_status;
+  }
+
+  // Calling page_get_cache(TRUE) can return either TRUE or FALSE. If TRUE, the
+  // page is cacheable, but there was a cache miss. If FALSE, then it's either
+  // a cache hit, or the page is not cacheable.
+  if (page_get_cache(TRUE)) {
+    $cache_status = 'MISS';
+  }
+  else {
+    // This is taken directly from page_get_cache(). If this evaluates to TRUE,
+    // then we must have a cache hit. Otherwise, the page was not cacheable to
+    // begin with.
+    if (!$user->uid && $_SERVER['REQUEST_METHOD'] == 'GET' && count(drupal_set_message()) == 0 && $_SERVER['SERVER_SOFTWARE'] !== 'PHP CLI') {
+      $cache_status = 'HIT';
+    }
+  }
+
+  return $cache_status;
+}

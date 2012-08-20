@@ -1,5 +1,5 @@
 name = Better Statistics
 description = Augments the core Statistics module.
 package = Statistics
-core = 7.x
+core = 6.x
 dependencies[] = statistics

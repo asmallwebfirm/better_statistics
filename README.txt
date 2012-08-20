@@ -5,7 +5,7 @@ information. It does so with no greater performance overhead than Core
 Statistics itself introduces.
 
 This module won't do you much good unless you have the Statistics module enabled
-and "Enable access log" checked at admin/config/system/statistics.
+and "Enable access log" checked at admin/reports/settings.
 
 
 -- FEATURES --
@@ -28,4 +28,4 @@ Install this module if you need to have the ability to answer questions like:
 
 * Ensure that the core Statistics module is already enabled.
 * Install and enable this module.
-* Ensure that "Enable access log" is checked at admin/config/system/statistics.
+* Ensure that "Enable access log" is checked at admin/reports/settings.
