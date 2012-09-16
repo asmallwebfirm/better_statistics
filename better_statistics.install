@@ -7,37 +7,28 @@
 
 
 /**
- * Implements hook_install().
- *
- * Adds fields provided by this module to the accesslog table.
- */
-function better_statistics_install() {
-  // Load our field definitions.
-  module_load_include('inc', 'better_statistics', 'better_statistics.helpers');
-  $fields = _better_statistics_define_fields(TRUE);
-
-  // For each field defined, add it to the accesslog.
-  foreach ($fields as $name => $field) {
-    if (!db_field_exists('accesslog', $name)) {
-      db_add_field('accesslog', $name, $field);
-    }
-  }
-}
-
-/**
  * Implements hook_uninstall().
  *
- * Removes fields provided by this module from the accesslog table.
+ * Returns the accesslog schema to Core's declared default.
  */
 function better_statistics_uninstall() {
-  // Load our field definitions.
-  module_load_include('inc', 'better_statistics', 'better_statistics.helpers');
-  $fields = _better_statistics_define_fields(TRUE);
+  // Get all fields that are live in the DB now.
+  $live_fields = array_keys(db_select('accesslog', 'a')
+    ->fields('a')
+    ->range(0,1)
+    ->execute()
+    ->fetchAssoc());
 
-  // For each field defined, remove it from the accesslog table.
-  foreach ($fields as $name => $field) {
-    if (db_field_exists('accesslog', $name)) {
-      db_drop_field('accesslog', $name);
+  // Get the declared default fields.
+  $access_schema = drupal_get_schema_unprocessed('statistics', 'accesslog');
+  $default_fields = $access_schema['fields'];
+
+  // If the live field doesn't exist in the default fields, remove it.
+  foreach ($live_fields as $field) {
+    if (!isset($default_fields[$field])) {
+      db_drop_field('accesslog', $field);
     }
   }
+
+  variable_del('better_statistics_fields');
 }

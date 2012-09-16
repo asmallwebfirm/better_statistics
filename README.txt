@@ -1,31 +1,24 @@
 -- SUMMARY --
 
-This module augments Drupal Core's Statistics module by collecting additional
-information. It does so with no greater performance overhead than Core
-Statistics itself introduces.
+This module augments Drupal Core's Statistics module by exposing additional
+fields for inclusion in the Access Log and providing an API for other modules
+to also collect arbitrary data.
 
-This module won't do you much good unless you have the Statistics module enabled
-and "Enable access log" checked at admin/config/system/statistics.
+This module requires the Statistics module be enabled and "Enable access log"
+checked at admin/config/system/statistics.
 
 
 -- FEATURES --
 
-* Adds cache status and user-agent fields to the access log.
-* Additional fields are integrated with views (filtering, sorting, etc).
-
-
--- WHY INSTALL THIS MODULE --
-
-Install this module if you need to have the ability to answer questions like:
-
-* What is my website's cache hit rate throughout the day, week, month, etc?
-* How does page generation time of cached pages compare to uncached pages?
-* When does Google crawl my website and what kind of page generation time does
-  it see?
+* Provides cache status, user-agent, and peak memory fields for the access log.
+* Integrates additional fields with views (filtering, sorting, etc).
+* Provides an API for other modules to collect arbitrary data in the access log.
+* Additions to the core Statistics configuration page allowing users to
+  customize which fields to enable for data collection.
 
 
 -- INSTALLATION --
 
 * Ensure that the core Statistics module is already enabled.
 * Install and enable this module.
-* Ensure that "Enable access log" is checked at admin/config/system/statistics.
+* Configure custom access log data collection at admin/config/system/statistics.

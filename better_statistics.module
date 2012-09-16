@@ -9,21 +9,20 @@
 /**
  * Implements hook_schema_alter().
  *
- * Reflects the changes we made at install-time in the accesslog schema.
+ * Reflects the customizations chosen by the user in the schema.
  */
 function better_statistics_schema_alter(&$schema) {
   // Fetch the fields defined by this module.
-  module_load_include('inc', 'better_statistics', 'better_statistics.helpers');
-  $fields = _better_statistics_define_fields();
+  $fields = variable_get('better_statistics_fields', better_statistics_get_default_fields());
 
   // For each field defined, add it to the schema.
-  foreach ($fields as $name => $field) {
-    $schema['accesslog']['fields'][$name] = $field;
+  foreach ($fields as $field => $data) {
+    $schema['accesslog']['fields'][$field] = $data['schema'];
   }
 }
 
 
-/** 
+/**
  * Implements hook_module_implements_alter().
  *
  * Ensures this module fires before Statistics' exit hook so that we don't
@@ -44,40 +43,17 @@ function better_statistics_module_implements_alter(&$implementations, $hook) {
  * Gathers additional data and inserts our data into accesslog.
  */
 function better_statistics_exit() {
-  global $user;
-
-  // Determine the cache hit/miss value.
-  $cached = NULL;
-  $headers = headers_list();
-  foreach ($headers as $header) {
-    if (strpos($header, 'X-Drupal-Cache:') !== FALSE) {
-      $cached = trim(substr($header, 15));
-      break;
-    }
-  }
-
-  // Determine and limit the user-agent value.
-  $user_agent = truncate_utf8($_SERVER['HTTP_USER_AGENT'], 255);
-
-  // Write our own (but mostly the same) data to accesslog.
-  // @see statistics_exit()
+  // If statistics access log is set to run, run our code.
   if (variable_get('statistics_enable_access_log', 0)) {
+    // @see statistics_exit().
     drupal_bootstrap(DRUPAL_BOOTSTRAP_SESSION);
     include_once DRUPAL_ROOT . '/includes/unicode.inc';
-    db_insert('accesslog')
-      ->fields(array(
-        'title' => truncate_utf8(strip_tags(drupal_get_title()), 255),
-        'path' => truncate_utf8($_GET['q'], 255),
-        'url' => isset($_SERVER['HTTP_REFERER']) ? $_SERVER['HTTP_REFERER'] : '',
-        'hostname' => ip_address(),
-        'uid' => $user->uid,
-        'sid' => session_id(),
-        'timer' => (int) timer_read('page'),
-        'timestamp' => REQUEST_TIME,
-        'cache' => $cached,
-        'user_agent' => $user_agent,
-      ))
-      ->execute();
+
+    // Get all declared fields and their computed values.
+    $fields = better_statistics_get_fields_data();
+
+    // Now that we have data, insert it.
+    db_insert('accesslog')->fields($fields)->execute();
   }
 
   // Keep statistics from writing additional data to the accesslog.
@@ -94,4 +70,196 @@ function better_statistics_views_api() {
     'api' => 3,
     'path' => drupal_get_path('module', 'better_statistics') . '/views',
   );
+}
+
+
+/**
+ * Implements hook_flush_caches().
+ *
+ * When all caches are flushed, detect any updates we need to make on active
+ * fields. This is implemented not to declare a cache table for flushing, but to
+ * react when all caches are flushed.
+ */
+function better_statistics_flush_caches() {
+  module_load_include('inc', 'better_statistics', 'better_statistics.admin');
+  _better_statistics_update_fields();
+
+  return array();
+}
+
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ *
+ * @see _better_statistics_form_statistics_settings_form_alter()
+ */
+function better_statistics_form_statistics_settings_form_alter(&$form, &$form_state, $form_id) {
+  module_load_include('inc', 'better_statistics', 'better_statistics.admin');
+  _better_statistics_form_statistics_settings_form_alter($form, $form_state, $form_id);
+}
+
+
+/**
+ * Submit handler for the Better Statistics configuration form.
+ *
+ * @see _better_statistics_settings_form_submit()
+ */
+function better_statistics_settings_form_submit($form, &$form_state) {
+  module_load_include('inc', 'better_statistics', 'better_statistics.admin');
+  _better_statistics_settings_form_submit($form, $form_state);
+}
+
+
+/**
+ * Returns default fields in the exact same form expected of fields exposed via
+ * hook_better_statistics_fields().
+ */
+function better_statistics_get_default_fields() {
+  // Expose Drupal Core's accesslog fields to our own API.
+  $accesslog = drupal_get_schema_unprocessed('statistics', 'accesslog');
+  $default_fields = array();
+  foreach ($accesslog['fields'] as $field => $schema) {
+    $default_fields[$field] = array(
+      'schema' => $schema,
+      'views_field' => FALSE,
+      'callback' => 'better_statistics_get_field_value',
+      'callback_argument' => $field,
+    );
+  }
+
+  return $default_fields;
+}
+
+
+/**
+ * Returns data for all valid, declared fields in preparation for DB insertion.
+ */
+function better_statistics_get_fields_data() {
+  $fields = variable_get('better_statistics_fields', better_statistics_get_default_fields());
+  $field_data = array();
+
+  // Loop through all custom fields.
+  foreach ($fields as $field => $data) {
+    // Only insert data into this field if there's a callback to get data.
+    if (is_callable($data['callback'])) {
+      $field_data[$field] = $data['callback']($field);
+    }
+  }
+
+  return $field_data;
+}
+
+
+/**
+ * Implements hook_better_statistics_fields().
+ */
+function better_statistics_better_statistics_fields() {
+  $fields = array();
+
+  // Pass all user-facing strings through t(), but always use English when first
+  // declaring fields. They will be run through t() normally on output.
+  $en = array('langcode' => 'en');
+
+  // Declare a cache status field.
+  $fields['cache'] = array(
+    'schema' => array(
+      'type' => 'varchar',
+      'length' => 128,
+      'not null' => FALSE,
+      'description' => 'Cache hit, miss, or not applicable.',
+    ),
+    'callback' => 'better_statistics_get_field_value',
+    'views_field' => array(
+      'title' => t('Cache status', array(), $en),
+      'help' => t('The cache status of the page (HIT, MISS, or NULL).', array(), $en),
+    ),
+  );
+
+  // Declare a user agent field.
+  $fields['user_agent'] = array(
+    'schema' => array(
+      'type' => 'varchar',
+      'length' => 255,
+      'not null' => FALSE,
+      'description' => 'User-agent string used on the request.',
+    ),
+    'callback' => 'better_statistics_get_field_value',
+    'views_field' => array(
+      'title' => t('User-agent', array(), $en),
+      'help' => t('User-agent string of the user who visited your page.', array(), $en),
+    ),
+  );
+
+  // Declare a peak memory field.
+  $fields['peak_memory'] = array(
+    'schema' => array(
+      'type' => 'int',
+      'size' => 'normal',
+      'not null' => TRUE,
+      'default' => 0,
+      'unsigned' => TRUE,
+      'description' => 'Peak memory in bytes allocated for the request.',
+    ),
+    'callback' => 'memory_get_peak_usage',
+    'views_field' => array(
+      'title' => t('Peak memory', array(), $en),
+      'help' => t('Size in bytes of the peak memory allocated for the request.', array(), $en),
+    ),
+  );
+
+  return $fields;
+}
+
+
+/**
+ * Returns a value to be inserted into the accesslog based on a field name
+ * provided. This handles Drupal Core's values as well as our own.
+ *
+ * @param $field
+ *   The name of the field for which to return data.
+ *
+ * @return
+ *   The data to be inserted into the accesslog for the provided field.
+ */
+function better_statistics_get_field_value($field) {
+  switch ($field) {
+    case 'title':
+      return truncate_utf8(strip_tags(drupal_get_title()), 255);
+
+    case 'path':
+      return truncate_utf8($_GET['q'], 255);
+
+    case 'url':
+      return isset($_SERVER['HTTP_REFERER']) ? $_SERVER['HTTP_REFERER'] : '';
+
+    case 'hostname':
+      return ip_address();
+
+    case 'uid':
+      global $user;
+      return $user->uid;
+
+    case 'sid':
+      return session_id();
+
+    case 'timer':
+      return (int) timer_read('page');
+
+    case 'timestamp':
+      return REQUEST_TIME;
+
+    case 'cache':
+      $cached = NULL;
+      $headers = headers_list();
+      foreach ($headers as $header) {
+        if (strpos($header, 'X-Drupal-Cache:') !== FALSE) {
+          $cached = trim(substr($header, 15));
+          break;
+        }
+      }
+      return $cached;
+
+    case 'user_agent':
+      return truncate_utf8($_SERVER['HTTP_USER_AGENT'], 255);
+  }
 }
