@@ -225,16 +225,34 @@ function _better_statistics_update_fields() {
 
         // Check for updates to the schema.
         if ($active[$field]['schema'] != $field_data['schema']) {
-          // Change the schema.
-          db_change_field('accesslog', $field, $field, $field_data['schema']);
+          try {
+            // Change the schema.
+            db_change_field('accesslog', $field, $field, $field_data['schema']);
+  
+            // Write through the change to the active store.
+            $active[$field]['schema'] = $field_data['schema'];
+  
+            // Log the field change in watchdog.
+            watchdog('better statistics', 'Successfully changed field %field in the accesslog.', array(
+              '%field' => $field,
+            ), WATCHDOG_NOTICE);
+          }
+          catch(Exception $e) {
+            $module_info = system_get_info('module', $module);
+            $message = '<em>Error</em>: Failed to update the %field field in the access log. Please make sure you are using the latest version of the @module module.';
+            $options = array(
+              '%field' => $field,
+              '@module' => $module_info['name'],
+            );
 
-          // Write through the change to the active store.
-          $active[$field]['schema'] = $field_data['schema'];
+            // Set a message notifying the user.
+            drupal_set_message(t($message, $options), 'error');
 
-          // Log the field change in watchdog.
-          watchdog('better statistics', 'Successfully changed field %field in the accesslog.', array(
-            '%field' => $field,
-          ), WATCHDOG_NOTICE);
+            // Log the failed attempt in watchdog and add more details.
+            $message .= '<br /><br /><strong>Error message:</strong><br />!error';
+            $options['!error'] = $e->getMessage();
+            watchdog('better statistics', $message, $options, WATCHDOG_ERROR);
+          }
         }
       }
 
