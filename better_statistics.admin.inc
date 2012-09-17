@@ -216,7 +216,7 @@ function _better_statistics_update_fields() {
       // Only check for differences in pre-existing fields in the active store.
       if (isset($active[$field])) {
         // Check that the new callback is callable and write through.
-        if (is_callable($data['callback'])) {
+        if (is_callable($field_data['callback'])) {
           $active[$field]['callback'] = $field_data['callback'];
         }
 
