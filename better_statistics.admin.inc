@@ -19,7 +19,7 @@ function _better_statistics_form_statistics_settings_form_alter(&$form, &$form_s
     '#type' => 'fieldset',
     '#collapsible' => FALSE,
     '#title' => t('Better statistics settings'),
-    '#description' => t('Select the data you would like to collect on each page load. Note that unchecking a field below will permanently delete all data collected for that field.'),
+    '#description' => t('Select the data you would like to collect on each page request. Note that unchecking a field below will permanently delete all data collected for that field.'),
     '#weight' => 0,
     // Only show this fieldset if the accesslog is enabled.
     '#states' => array(
@@ -88,10 +88,16 @@ function _better_statistics_form_statistics_settings_form_alter(&$form, &$form_s
       }
     }
 
-    // Create checkboxes for all fields declared by this module.
+    // Make a collapsible fieldset for the module.
     $form['better_statistics'][$module] = array(
-      '#type' => 'checkboxes',
+      '#type' => 'fieldset',
+      '#collapsible' => TRUE,
+      '#collapsed' => $disabled,
       '#title' => $module_info['name'],
+    );
+    // Create checkboxes for all fields detected for this module.
+    $form['better_statistics'][$module]['fields'] = array(
+      '#type' => 'checkboxes',
       '#options' => $field_set,
       '#disabled' => $disabled,
       '#default_value' => $defaults,
