@@ -194,6 +194,11 @@ function _better_statistics_settings_form_submit($form, &$form_state) {
 
   // Save the active store with any changes.
   variable_set('better_statistics_fields', $active);
+
+  // If Views is enabled, clear the Views data cache so fields are registered.
+  if (module_exists('views')) {
+    cache_clear_all('views_data:', 'cache_views', TRUE);
+  }
 }
 
 
