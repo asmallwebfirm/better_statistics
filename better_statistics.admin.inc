@@ -120,7 +120,7 @@ function _better_statistics_settings_form_submit($form, &$form_state) {
   $customizations = array();
   foreach ($declared as $module => $fields) {
     foreach ($fields as $name => $field) {
-      if ($form_state['input'][$module][$name]) {
+      if ($form_state['input']['fields'][$name]) {
         $customizations[$name] = $field;
       }
     }
