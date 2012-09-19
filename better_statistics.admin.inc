@@ -200,6 +200,9 @@ function _better_statistics_settings_form_submit($form, &$form_state) {
   // Unset values so they're not saved by the system form handler.
   unset($form_state['values']['better_statistics']);
 
+  // It can be convenient to call the field update function after configuration.
+  _better_statistics_update_fields();
+
   // Clear the Views data cache so fields are registered.
   cache_clear_all('views_data:', 'cache_views', TRUE);
 }
