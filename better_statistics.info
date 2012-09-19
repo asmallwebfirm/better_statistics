@@ -2,4 +2,5 @@ name = Better Statistics
 description = Augments the core Statistics module.
 package = Statistics
 core = 7.x
+dependencies[] = ctools
 dependencies[] = statistics

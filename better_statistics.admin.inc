@@ -21,6 +21,7 @@ function _better_statistics_form_statistics_settings_form_alter(&$form, &$form_s
     '#title' => t('Better statistics settings'),
     '#description' => t('Select the data you would like to collect on each page request. Note that unchecking a field below will permanently delete all data collected for that field.'),
     '#weight' => 0,
+    '#tree' => TRUE,
     // Only show this fieldset if the accesslog is enabled.
     '#states' => array(
       'visible' => array(
@@ -92,7 +93,7 @@ function _better_statistics_form_statistics_settings_form_alter(&$form, &$form_s
     $form['better_statistics'][$module] = array(
       '#type' => 'fieldset',
       '#collapsible' => TRUE,
-      '#collapsed' => $disabled,
+      '#collapsed' => TRUE,
       '#title' => $module_info['name'],
     );
     // Create checkboxes for all fields detected for this module.
@@ -105,7 +106,8 @@ function _better_statistics_form_statistics_settings_form_alter(&$form, &$form_s
   }
 
   // Add a submit handler to handle schema changes as a result of changes here.
-  $form['#submit'][] = 'better_statistics_settings_form_submit';
+  // Fire before the system settings; we don't want it to save variables.
+  array_unshift($form['#submit'], 'better_statistics_settings_form_submit');
 }
 
 
@@ -120,7 +122,7 @@ function _better_statistics_settings_form_submit($form, &$form_state) {
   $customizations = array();
   foreach ($declared as $module => $fields) {
     foreach ($fields as $name => $field) {
-      if ($form_state['input']['fields'][$name]) {
+      if ($form_state['values']['better_statistics'][$module]['fields'][$name]) {
         $customizations[$name] = $field;
       }
     }
@@ -195,10 +197,11 @@ function _better_statistics_settings_form_submit($form, &$form_state) {
   // Save the active store with any changes.
   variable_set('better_statistics_fields', $active);
 
-  // If Views is enabled, clear the Views data cache so fields are registered.
-  if (module_exists('views')) {
-    cache_clear_all('views_data:', 'cache_views', TRUE);
-  }
+  // Unset values so they're not saved by the system form handler.
+  unset($form_state['values']['better_statistics']);
+
+  // Clear the Views data cache so fields are registered.
+  cache_clear_all('views_data:', 'cache_views', TRUE);
 }
 
 
@@ -216,9 +219,14 @@ function _better_statistics_settings_form_submit($form, &$form_state) {
  */
 function _better_statistics_update_fields() {
   // Attempt to get all fields, including customizations from other modules.
-  $active = variable_get('better_statistics_fields', better_statistics_get_default_fields());
+  $active = variable_get('better_statistics_fields', FALSE);
   $customizations = _better_statistics_get_custom_fields_by_module();
   $available_fields = array_keys(better_statistics_get_default_fields());
+
+  // There's no reason for this to run if no custom fields are installed.
+  if (!$active) {
+    return;
+  }
 
   // Write through updates to the non-schema portions of custom fields; also
   // check for, perform, and write through schema updates.
@@ -233,6 +241,11 @@ function _better_statistics_update_fields() {
 
         // Write through Views API changes.
         $active[$field]['views_field'] = $field_data['views_field'];
+
+        // Write through the location of the callback.
+        if (isset($field_data['_file'])) {
+          $active[$field]['_file'] = $field_data['_file'];
+        }
 
         // Check for updates to the schema.
         if ($active[$field]['schema'] != $field_data['schema']) {
@@ -289,7 +302,8 @@ function _better_statistics_update_fields() {
 
 /**
  * Returns arrays of fields keyed by the module that declares them. In addition,
- * this function will attempt to apply sensible views handlers.
+ * this function will attempt to apply sensible views handlers. This should be
+ * the only function used to get declared fields.
  *
  * @return
  *   Arrays of declared statistics fields keyed by their declaring module.
@@ -297,14 +311,19 @@ function _better_statistics_update_fields() {
 function _better_statistics_get_custom_fields_by_module() {
   $declared = array();
 
+  // Load all Statistics API inc files.
+  $api_info = _better_statistics_include_handlers();
+
   foreach (module_implements('better_statistics_fields') as $module) {
     $fields = module_invoke($module, 'better_statistics_fields');
 
     foreach ($fields as $field => &$data) {
-      // Try to provide default title and help description.
+      // Try to provide a default title.
       if (!isset($data['views_field']['title'])) {
         $data['views_field']['title'] = $field;
       }
+
+      // Try to provide a default help text.
       if (!isset($data['views_field']['help'])) {
         $data['views_field']['help'] = isset($data['schema']['description']) ? $data['schema']['description'] : '';
       }
@@ -318,6 +337,12 @@ function _better_statistics_get_custom_fields_by_module() {
         else {
           $data['views_field'] = FALSE;
         }
+      }
+
+      // Include the path to the file containing the API callback. If this isn't
+      // set, the callback is available anywhere Drupal is bootstrapped.
+      if (isset($api_info[$module]['file_required'])) {
+        $data['_file'] = $api_info[$module]['file_required'];
       }
     }
 
@@ -397,4 +422,53 @@ function _better_statistics_get_views_handlers($schema) {
   }
 
   return $handlers;
+}
+
+
+/**
+ * Loads all inc files declared using the Statistics API.
+ *
+ * This is almost identical to ctools_plugin_api_include(), but modified a bit
+ * to return file inclusion data.
+ *
+ * @return
+ *   An array containing the API information, including the actual files that
+ *   each module declares. 
+ */
+function _better_statistics_include_handlers($reset = FALSE) {
+  static $finished = FALSE;
+
+  // Ensure this only runs once.
+  if ($finished && !$reset) {
+    return $finished;
+  }
+
+  ctools_include('plugins');
+  $info = ctools_plugin_api_info('better_statistics', 'statistics', BETTER_STATISTICS_API_MIN_VERSION, BETTER_STATISTICS_API_VERSION);
+  foreach ($info as $module => &$plugin_info) {
+    if (!isset($already_done['better_statistics']['statistics'][$module])) {
+      if (isset($plugin_info['statistics file'])) {
+        $file = $plugin_info['statistics file'];
+      }
+      else if (isset($plugin_info['file'])) {
+        $file = $plugin_info['file'];
+      }
+      else {
+        $file = "$module.statistics.inc";
+      }
+
+      if (file_exists(DRUPAL_ROOT . "/$plugin_info[path]/$file")) {
+        require_once DRUPAL_ROOT . "/$plugin_info[path]/$file";
+        $plugin_info['file_required'] = "$plugin_info[path]/$file";
+      }
+      else if (file_exists(DRUPAL_ROOT . "/$file")) {
+        require_once DRUPAL_ROOT . "/$file";
+        $plugin_info['file_required'] = "$file";
+      }
+      $already_done['better_statistics']['statistics'][$module] = TRUE;
+    }
+  }
+
+  $finished = $info;
+  return $finished;
 }

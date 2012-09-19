@@ -5,6 +5,12 @@
  * Drupal hook implementations for the Better Statistics module.
  */
 
+/**
+ * Current and minimum Statistics API version. For internal use only!
+ */
+define('BETTER_STATISTICS_API_VERSION', 1.0);
+define('BETTER_STATISTICS_API_MIN_VERSION', 1.0);
+
 
 /**
  * Implements hook_schema_alter().
@@ -34,6 +40,17 @@ function better_statistics_module_implements_alter(&$implementations, $hook) {
     // Ensure our hook fires before statistics.
     $implementations['better_statistics'] = -1;
   }
+}
+
+
+/**
+ * Implements hook_ctools_plugin_api_hook_name().
+ *
+ * Report to CTools that we use hook_statistics_api instead of
+ * hook_ctools_plugin_api().
+ */
+function better_statistics_ctools_plugin_api_hook_name() {
+  return 'statistics_api';
 }
 
 
@@ -111,6 +128,18 @@ function better_statistics_settings_form_submit($form, &$form_state) {
 
 
 /**
+ * Implements hook_statistics_api().
+ */
+function better_statistics_statistics_api() {
+  return array(
+    // In your module, do not use this constant!
+    'api' => BETTER_STATISTICS_API_VERSION,
+    'path' => drupal_get_path('module', 'better_statistics'),
+  );
+}
+
+
+/**
  * Returns default fields in the exact same form expected of fields exposed via
  * hook_better_statistics_fields().
  */
@@ -135,11 +164,22 @@ function better_statistics_get_default_fields() {
  * Returns data for all valid, declared fields in preparation for DB insertion.
  */
 function better_statistics_get_fields_data() {
+  // Include this module's API file because of how core fields are implemented.
+  require_once(drupal_get_path('module', 'better_statistics') .'/better_statistics.statistics.inc');
+
   $fields = variable_get('better_statistics_fields', better_statistics_get_default_fields());
   $field_data = array();
 
   // Loop through all custom fields.
   foreach ($fields as $field => $data) {
+    // If there's an inc file and it hasn't been loaded yet, load it.
+    if (isset($data['_file']) && !isset($already[$data['_file']])) {
+      if (file_exists(DRUPAL_ROOT . '/' . $data['_file'])) {
+        require_once(DRUPAL_ROOT . '/' . $data['_file']);
+        $already[$data['_file']] = TRUE;
+      }
+    }
+
     // Only insert data into this field if there's a callback to get data.
     if (is_callable($data['callback'])) {
       $field_data[$field] = $data['callback']($field);
@@ -147,119 +187,4 @@ function better_statistics_get_fields_data() {
   }
 
   return $field_data;
-}
-
-
-/**
- * Implements hook_better_statistics_fields().
- */
-function better_statistics_better_statistics_fields() {
-  $fields = array();
-
-  // Pass all user-facing strings through t(), but always use English when first
-  // declaring fields. They will be run through t() normally on output.
-  $en = array('langcode' => 'en');
-
-  // Declare a cache status field.
-  $fields['cache'] = array(
-    'schema' => array(
-      'type' => 'varchar',
-      'length' => 128,
-      'not null' => FALSE,
-      'description' => 'Cache hit, miss, or not applicable.',
-    ),
-    'callback' => 'better_statistics_get_field_value',
-    'views_field' => array(
-      'title' => t('Cache status', array(), $en),
-      'help' => t('The cache status of the page (HIT, MISS, or NULL).', array(), $en),
-    ),
-  );
-
-  // Declare a user agent field.
-  $fields['user_agent'] = array(
-    'schema' => array(
-      'type' => 'varchar',
-      'length' => 255,
-      'not null' => FALSE,
-      'description' => 'User-agent string used on the request.',
-    ),
-    'callback' => 'better_statistics_get_field_value',
-    'views_field' => array(
-      'title' => t('User-agent', array(), $en),
-      'help' => t('User-agent string of the user who visited your page.', array(), $en),
-    ),
-  );
-
-  // Declare a peak memory field.
-  $fields['peak_memory'] = array(
-    'schema' => array(
-      'type' => 'int',
-      'size' => 'normal',
-      'not null' => TRUE,
-      'default' => 0,
-      'unsigned' => TRUE,
-      'description' => 'Peak memory in bytes allocated for the request.',
-    ),
-    'callback' => 'memory_get_peak_usage',
-    'views_field' => array(
-      'title' => t('Peak memory', array(), $en),
-      'help' => t('Size in bytes of the peak memory allocated for the request.', array(), $en),
-    ),
-  );
-
-  return $fields;
-}
-
-
-/**
- * Returns a value to be inserted into the accesslog based on a field name
- * provided. This handles Drupal Core's values as well as our own.
- *
- * @param $field
- *   The name of the field for which to return data.
- *
- * @return
- *   The data to be inserted into the accesslog for the provided field.
- */
-function better_statistics_get_field_value($field) {
-  switch ($field) {
-    case 'title':
-      return truncate_utf8(strip_tags(drupal_get_title()), 255);
-
-    case 'path':
-      return truncate_utf8($_GET['q'], 255);
-
-    case 'url':
-      return isset($_SERVER['HTTP_REFERER']) ? $_SERVER['HTTP_REFERER'] : '';
-
-    case 'hostname':
-      return ip_address();
-
-    case 'uid':
-      global $user;
-      return $user->uid;
-
-    case 'sid':
-      return session_id();
-
-    case 'timer':
-      return (int) timer_read('page');
-
-    case 'timestamp':
-      return REQUEST_TIME;
-
-    case 'cache':
-      $cached = NULL;
-      $headers = headers_list();
-      foreach ($headers as $header) {
-        if (strpos($header, 'X-Drupal-Cache:') !== FALSE) {
-          $cached = trim(substr($header, 15));
-          break;
-        }
-      }
-      return $cached;
-
-    case 'user_agent':
-      return truncate_utf8($_SERVER['HTTP_USER_AGENT'], 255);
-  }
 }

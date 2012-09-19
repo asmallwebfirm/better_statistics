@@ -22,6 +22,29 @@
  */
 
 /**
+ * Register Statistics API information. This is required for your module to have
+ * its include files loaded.
+ *
+ * @return
+ *   An array with the following possible keys:
+ *   - api: (required) The version of the Statistics API the module implements.
+ *     The current version of the API is 1.0.
+ *   - path: (optional) If the include is stored somewhere other than within the
+ *     root module directory, specify its path here.
+ *   - file: (optional) If the include's file name is anything other than
+ *     MODULE.statistics.inc, specify it here.
+ */
+function hook_statistics_api() {
+  // In this example, Better Statistics hooks and callbacks would be located
+  // somewhere like: /sites/all/modules/example/statistics/stats_fields.inc
+  return array(
+    'version' => 1,
+    'path' => drupal_get_path('module', 'example') . '/statistics',
+    'file' => 'stats_fields.inc',
+  );
+}
+
+/**
  * Declare additional fields for possible inclusion in {accesslog}.
  *
  * This hook allows your module to expose fields for inclusion in the accesslog.
@@ -42,6 +65,9 @@
  *
  * Be careful in your use of the t() function on user-facing strings. See the
  * provided examples below.
+ *
+ * This hook and your field callbacks should be placed in an include of the form
+ * MODULE.statistics.inc. @see hook_statistics_api()
  *
  * @return
  *   An array of information about the fields for which your module can provide
