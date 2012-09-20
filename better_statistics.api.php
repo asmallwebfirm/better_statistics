@@ -67,7 +67,7 @@ function hook_statistics_api() {
  * provided examples below.
  *
  * This hook and your field callbacks should be placed in an include of the form
- * MODULE.statistics.inc. @see hook_statistics_api()
+ * MODULE.statistics.inc.
  *
  * @return
  *   An array of information about the fields for which your module can provide
@@ -88,6 +88,7 @@ function hook_statistics_api() {
  *     expose your field to Views. Note you can set this to FALSE to disable
  *     Views integration for your field.
  *
+ * @see hook_statistics_api()
  * @see _better_statistics_get_custom_fields_by_module()
  * @see schemaapi
  * @see hook_views_data()

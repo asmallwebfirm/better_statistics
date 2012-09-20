@@ -1,6 +1,7 @@
 <?php
 
 /**
+ * @file
  * Statistics API functions and hooks for the Better Statistics module.
  */
 

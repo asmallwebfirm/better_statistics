@@ -38,7 +38,7 @@ function better_statistics_uninstall() {
   // Get all fields that are live in the DB now.
   $live_fields = array_keys(db_select('accesslog', 'a')
     ->fields('a')
-    ->range(0,1)
+    ->range(0, 1)
     ->execute()
     ->fetchAssoc());
 

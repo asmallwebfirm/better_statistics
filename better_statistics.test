@@ -1,6 +1,7 @@
 <?php
 
 /**
+ * @file
  * Tests for the Better Statistics Module.
  */
 

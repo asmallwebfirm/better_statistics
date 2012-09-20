@@ -94,7 +94,7 @@ function _better_statistics_form_statistics_settings_form_alter(&$form, &$form_s
       '#type' => 'fieldset',
       '#collapsible' => TRUE,
       '#collapsed' => TRUE,
-      '#title' => $module_info['name'],
+      '#title' => check_plain($module_info['name']),
     );
     // Create checkboxes for all fields detected for this module.
     $form['better_statistics'][$module]['fields'] = array(
@@ -257,18 +257,18 @@ function _better_statistics_update_fields() {
           try {
             // Change the schema.
             db_change_field('accesslog', $field, $field, $field_data['schema']);
-  
+
             // Write through the change to the active store.
             $active[$field]['schema'] = $field_data['schema'];
-  
+
             // Log the field change in watchdog.
             watchdog('better statistics', 'Successfully changed field %field in the accesslog.', array(
               '%field' => $field,
             ), WATCHDOG_NOTICE);
           }
-          catch(Exception $e) {
+          catch (Exception $e) {
             $module_info = system_get_info('module', $module);
-            $message = '<em>Error</em>: Failed to update the %field field in the access log. Please make sure you are using the latest version of the @module module.';
+            $message = filter_xss_admin('<em>Error</em>: Failed to update the %field field in the access log. Please make sure you are using the latest version of the @module module.');
             $options = array(
               '%field' => $field,
               '@module' => $module_info['name'],
@@ -278,8 +278,8 @@ function _better_statistics_update_fields() {
             drupal_set_message(t($message, $options), 'error');
 
             // Log the failed attempt in watchdog and add more details.
-            $message .= '<br /><br /><strong>Error message:</strong><br />!error';
-            $options['!error'] = $e->getMessage();
+            $message .= filter_xss_admin('<br /><br /><strong>Error message:</strong><br />@error');
+            $options['@error'] = $e->getMessage();
             watchdog('better statistics', $message, $options, WATCHDOG_ERROR);
           }
         }
@@ -438,7 +438,7 @@ function _better_statistics_get_views_handlers($schema) {
  *
  * @return
  *   An array containing the API information, including the actual files that
- *   each module declares. 
+ *   each module declares.
  */
 function _better_statistics_include_handlers($reset = FALSE) {
   static $finished = FALSE;
@@ -455,7 +455,7 @@ function _better_statistics_include_handlers($reset = FALSE) {
       if (isset($plugin_info['statistics file'])) {
         $file = $plugin_info['statistics file'];
       }
-      else if (isset($plugin_info['file'])) {
+      elseif (isset($plugin_info['file'])) {
         $file = $plugin_info['file'];
       }
       else {
@@ -466,7 +466,7 @@ function _better_statistics_include_handlers($reset = FALSE) {
         require_once DRUPAL_ROOT . "/$plugin_info[path]/$file";
         $plugin_info['file_required'] = "$plugin_info[path]/$file";
       }
-      else if (file_exists(DRUPAL_ROOT . "/$file")) {
+      elseif (file_exists(DRUPAL_ROOT . "/$file")) {
         require_once DRUPAL_ROOT . "/$file";
         $plugin_info['file_required'] = "$file";
       }
