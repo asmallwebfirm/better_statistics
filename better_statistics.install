@@ -7,6 +7,29 @@
 
 
 /**
+ * Enable the Statistics API.
+ */
+function better_statistics_update_7100() {
+  // This doesn't need to run if the user already saved the upgrade form.
+  $already_ran = variable_get('better_statistics_fields', FALSE);
+  if (!$already_ran) {
+    // Load the admin.inc file.
+    module_load_include('inc', 'better_statistics', 'better_statistics.admin');
+
+    // Generate a fake form state as if the user chose the fields that were
+    // originally made available in 7.x-1.0.
+    $form_state['values']['better_statistics']['better_statistics']['fields'] = array(
+      'cache' => 'cache',
+      'user_agent' => 'user_agent',
+    );
+
+    // Force active store variable to be set by faking a form submission.
+    _better_statistics_settings_form_submit(NULL, $form_state);
+  }
+}
+
+
+/**
  * Implements hook_uninstall().
  *
  * Returns the accesslog schema to Core's declared default.
