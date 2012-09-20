@@ -17,10 +17,6 @@ class BetterStatisticsTest extends DrupalWebTestCase {
       'name' => 'Better Statistics functionality',
       'description' => 'Basic functionality of the Better Statistics module',
       'group' => 'Better Statistics',
-      'dependencies' => array(
-        'statistics',
-        'ctools',
-      ),
     );
   }
 
