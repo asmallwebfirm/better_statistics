@@ -204,7 +204,9 @@ function _better_statistics_settings_form_submit($form, &$form_state) {
   _better_statistics_update_fields();
 
   // Clear the Views data cache so fields are registered.
-  cache_clear_all('views_data:', 'cache_views', TRUE);
+  if (module_exists('views')) {
+    cache_clear_all('views_data:', 'cache_views', TRUE);
+  }
 }
 
 
