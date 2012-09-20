@@ -17,6 +17,10 @@ class BetterStatisticsTest extends DrupalWebTestCase {
       'name' => 'Better Statistics functionality',
       'description' => 'Basic functionality of the Better Statistics module',
       'group' => 'Better Statistics',
+      'dependencies' => array(
+        'statistics',
+        'ctools',
+      ),
     );
   }
 
@@ -30,11 +34,12 @@ class BetterStatisticsTest extends DrupalWebTestCase {
     parent::setUp($modules);
 
     // Create a user.
-    $this->normal_user = $this->drupalCreateUser(array(
+    $this->admin_user = $this->drupalCreateUser(array(
+      'access administration pages',
       'administer statistics',
       'access content',
     ));
-    $this->drupalLogin($this->normal_user);
+    $this->drupalLogin($this->admin_user);
 
     // Enable the accesslog.
     variable_set('statistics_enable_access_log', 1);
