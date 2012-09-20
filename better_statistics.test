@@ -1,0 +1,99 @@
+<?php
+
+/**
+ * Tests for the Better Statistics Module.
+ */
+
+
+/**
+ * Functional tests for Better Statistics.
+ */
+class BetterStatisticsTest extends DrupalWebTestCase {
+
+  protected $stats_admin = 'admin/config/system/statistics';
+
+  public static function getInfo() {
+    return array(
+      'name' => 'Better Statistics functionality',
+      'description' => 'Basic functionality of the Better Statistics module',
+      'group' => 'Better Statistics',
+    );
+  }
+
+  public function setUp() {
+    // Enable required modules.
+    $modules = array(
+      'statistics',
+      'ctools',
+      'better_statistics',
+    );
+    parent::setUp($modules);
+
+    // Create a user.
+    $this->normal_user = $this->drupalCreateUser(array(
+      'administer statistics',
+      'access content',
+    ));
+    $this->drupalLogin($this->normal_user);
+
+    // Enable the accesslog.
+    variable_set('statistics_enable_access_log', 1);
+  }
+
+  public function tearDown() {
+    parent::tearDown();
+  }
+
+  /**
+   * Test basic functionality of the module.
+   */
+  public function testConfigurationChanges() {
+    // Check to see that the "cache" field is available.
+    $this->drupalGet($this->stats_admin);
+    $this->assertNoFieldChecked('edit-better-statistics-better-statistics-fields-cache', t('Cache field not enabled.'));
+
+    // Enable the cache field.
+    $edit = array(
+      'statistics_enable_access_log' => TRUE,
+      'better_statistics[better_statistics][fields][cache]' => TRUE,
+    );
+    $this->drupalPost($this->stats_admin, $edit, t('Save configuration'));
+
+    // Check to see that the cache field is checked and in the table.
+    $this->assertFieldChecked('edit-better-statistics-better-statistics-fields-cache', t('Cache field is checked.'));
+    $this->assertTrue(db_field_exists('accesslog', 'cache'), t('Cache field added to the database.'));
+
+    // Disable the cache field.
+    $edit = array(
+      'statistics_enable_access_log' => TRUE,
+      'better_statistics[better_statistics][fields][cache]' => FALSE,
+    );
+    $this->drupalPost($this->stats_admin, $edit, t('Save configuration'));
+
+    // Check to see that the cache field is gone and not in the table.
+    $this->assertNoFieldChecked('edit-better-statistics-better-statistics-fields-cache', t('Cache field disabled.'));
+    $this->assertFalse(db_field_exists('accesslog', 'cache'), t('Cache field removed from the databases.'));
+
+    // @todo Split these tests off maybe?
+    // Enable the user_agent field.
+    $edit = array(
+      'statistics_enable_access_log' => TRUE,
+      'better_statistics[better_statistics][fields][user_agent]' => TRUE,
+    );
+    $this->drupalPost($this->stats_admin, $edit, t('Save configuration'));
+
+    // Visit the homepage.
+    $this->drupalGet('node');
+
+    // Check for an entry in the accesslog with that user-agent.
+    $rows = db_query('SELECT aid FROM {accesslog} WHERE user_agent LIKE :ua', array(':ua' => 'simpletest%'))->rowCount();
+    $this->assertTrue($rows, t('User-agent string successfully found in the database.'));
+
+    // Disable the user_agent field.
+    $edit = array(
+      'statistics_enable_access_log' => TRUE,
+      'better_statistics[better_statistics][fields][user_agent]' => FALSE,
+    );
+    $this->drupalPost($this->stats_admin, $edit, t('Save configuration'));
+  }
+}
