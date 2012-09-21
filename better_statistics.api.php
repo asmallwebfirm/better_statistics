@@ -80,8 +80,9 @@ function hook_statistics_api() {
  *     schema changes will be registered and executed on cron and cache flushes.
  *   - callback: A function that returns data for the field. This function must
  *     take a single argument (the field name you provide), and must return data
- *     suitable (in type and length) for your field's declared schema. Note that
- *     if you can guarantee a PHP 5.3+ environment, this can be a closure.
+ *     properly typed and within range for your field's declared schema. Failure
+ *     to do so will result in complete data loss for the row. Also note that if
+ *     you can guarantee a PHP 5.3+ running environment, this can be a closure.
  *   - views_field: (optional) An array of Views handlers suitable for use in a
  *     call to hook_views_data() or hook_views_data_alter(). If no information
  *     is provided, Better Statistics will try and make its best guess on how to

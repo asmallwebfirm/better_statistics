@@ -69,8 +69,14 @@ function better_statistics_exit() {
     // Get all declared fields and their computed values.
     $fields = better_statistics_get_fields_data();
 
-    // Now that we have data, insert it.
-    db_insert('accesslog')->fields($fields)->execute();
+    // Now that we have data, try to insert it.
+    try {
+      db_insert('accesslog')->fields($fields)->execute();
+    }
+    catch (Exception $e) {
+      // Log the error.
+      watchdog('better statistics', 'There was an error collecting statistics data:<br /><br />@error', array('@error' => $e->getMessage()), WATCHDOG_ERROR);
+    }
   }
 
   // Keep statistics from writing additional data to the accesslog.
