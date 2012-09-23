@@ -448,6 +448,12 @@ function _better_statistics_include_handlers($reset = FALSE) {
     return $finished;
   }
 
+  // Check for ctools; this dependency was added after the initial relase.
+  if (!module_exists('ctools')) {
+    drupal_set_message(t('Better Statistics requires the ctools module. Please install and enable ctools.'), 'warning');
+    return array();
+  }
+
   ctools_include('plugins');
   $info = ctools_plugin_api_info('better_statistics', 'statistics', BETTER_STATISTICS_API_MIN_VERSION, BETTER_STATISTICS_API_VERSION);
   foreach ($info as $module => &$plugin_info) {
