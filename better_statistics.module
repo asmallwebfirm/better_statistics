@@ -74,6 +74,11 @@ function better_statistics_exit() {
       db_insert('accesslog')->fields($fields)->execute();
     }
     catch (Exception $e) {
+      // At least log core fields.
+      $defaults = better_statistics_get_default_fields();
+      $core_fields = array_intersect_key($fields, $defaults);
+      db_insert('accesslog')->fields($core_fields)->execute();
+
       // Log the error.
       watchdog('better statistics', 'There was an error collecting statistics data:<br /><br />@error', array('@error' => $e->getMessage()), WATCHDOG_ERROR);
     }
@@ -150,16 +155,18 @@ function better_statistics_statistics_api() {
  * hook_better_statistics_fields().
  */
 function better_statistics_get_default_fields() {
-  // Expose Drupal Core's accesslog fields to our own API.
-  $accesslog = drupal_get_schema_unprocessed('statistics', 'accesslog');
-  $default_fields = array();
-  foreach ($accesslog['fields'] as $field => $schema) {
-    $default_fields[$field] = array(
-      'schema' => $schema,
-      'views_field' => FALSE,
-      'callback' => 'better_statistics_get_field_value',
-      'callback_argument' => $field,
-    );
+  static $default_fields;
+
+  if (!isset($default_fields)) {
+    // Expose Drupal Core's accesslog fields to our own API.
+    $accesslog = drupal_get_schema_unprocessed('statistics', 'accesslog');
+    foreach ($accesslog['fields'] as $field => $schema) {
+      $default_fields[$field] = array(
+        'schema' => $schema,
+        'views_field' => FALSE,
+        'callback' => 'better_statistics_get_field_value',
+      );
+    }
   }
 
   return $default_fields;
