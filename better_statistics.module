@@ -11,6 +11,16 @@
 define('BETTER_STATISTICS_API_VERSION', 1.0);
 define('BETTER_STATISTICS_API_MIN_VERSION', 1.0);
 
+/**
+ * Implements hook_menu_alter().
+ *
+ * Redirects core's link to access log details page.
+ */
+function better_statistics_menu_alter(&$items) {
+  $items['admin/reports/access/%']['page callback'] = 'better_statistics_access_log';
+  $items['admin/reports/access/%']['module'] = 'better_statistics';
+  $items['admin/reports/access/%']['file'] = 'better_statistics.admin.inc';
+}
 
 /**
  * Implements hook_schema_alter().

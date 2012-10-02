@@ -483,3 +483,79 @@ function _better_statistics_include_handlers($reset = FALSE) {
   $finished = $info;
   return $finished;
 }
+
+
+/**
+ * Displays details of recent page accesses.
+ *
+ * Replacement of core 'statistics_access_log' callback.
+ */
+function better_statistics_access_log($aid) {
+  $access = db_query('SELECT a.*, u.name FROM {accesslog} a LEFT JOIN {users} u ON a.uid = u.uid WHERE aid = :aid', array(':aid' => $aid))->fetch();
+  if ($access) {
+    $rows[] = array(
+      array('data' => t('URL'), 'header' => TRUE),
+      l(url($access->path, array('absolute' => TRUE)), $access->path)
+    );
+    // It is safe to avoid filtering $access->title through check_plain because
+    // it comes from drupal_get_title().
+    $rows[] = array(
+      array('data' => t('Title'), 'header' => TRUE),
+      $access->title
+    );
+    $rows[] = array(
+      array('data' => t('Referrer'), 'header' => TRUE),
+      ($access->url ? l($access->url, $access->url) : '')
+    );
+    $rows[] = array(
+      array('data' => t('Date'), 'header' => TRUE),
+      format_date($access->timestamp, 'long')
+    );
+    $rows[] = array(
+      array('data' => t('User'), 'header' => TRUE),
+      theme('username', array('account' => $access))
+    );
+    $rows[] = array(
+      array('data' => t('Hostname'), 'header' => TRUE),
+      check_plain($access->hostname)
+    );
+    $rows[] = array(
+      array('data' => t('Page loading time (msec)'), 'header' => TRUE),
+      check_plain($access->timer)
+    );
+
+    unset(
+      $access->name,
+      $access->aid,
+      $access->sid,
+      $access->title,
+      $access->path,
+      $access->url,
+      $access->hostname,
+      $access->uid,
+      $access->timer,
+      $access->timestamp
+    );
+
+    $fields = variable_get('better_statistics_fields', better_statistics_get_default_fields());
+    foreach ($access as $field => $data) {
+      $header = isset($fields[$field]['views_field']['title']) ? t($fields[$field]['views_field']['title']) : $field;
+      $rows[] = array(
+        array(
+          'data' => $header,
+          'header' => TRUE,
+        ),
+        $data ? check_plain($data) : '&nbsp',
+      );
+    }
+
+    $build['statistics_table'] = array(
+      '#theme' => 'table',
+      '#rows' => $rows,
+    );
+    return $build;
+  }
+  else {
+    drupal_not_found();
+  }
+}

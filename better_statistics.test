@@ -35,6 +35,7 @@ class BetterStatisticsTest extends DrupalWebTestCase {
       'access administration pages',
       'administer statistics',
       'access content',
+      'access statistics',
     ));
     $this->drupalLogin($this->admin_user);
 
@@ -88,8 +89,14 @@ class BetterStatisticsTest extends DrupalWebTestCase {
     $this->drupalGet('node');
 
     // Check for an entry in the accesslog with that user-agent.
-    $rows = db_query('SELECT aid FROM {accesslog} WHERE user_agent LIKE :ua', array(':ua' => 'simpletest%'))->rowCount();
+    $query = db_query('SELECT aid FROM {accesslog} WHERE user_agent LIKE :ua', array(':ua' => 'simpletest%'));
+    $rows = $query->rowCount();
     $this->assertTrue($rows, t('User-agent string successfully found in the database.'));
+
+    // Check that the user agent string is added to the accesslog detail page.
+    $aid = $query->fetchObject();
+    $this->drupalGet('admin/reports/access/' . $aid->aid);
+    $this->assertText(t('User-agent'), t('User-agent field displayed on accesslog detail page.'));
 
     // Disable the user_agent field.
     $edit = array(
