@@ -168,8 +168,13 @@ function better_statistics_get_default_fields() {
   static $default_fields;
 
   if (!isset($default_fields)) {
+    // In some contexts, drupal_get_schema_unproccessed may be unavailable, so
+    // here, we get the accesslog schema the same way it does.
+    module_load_install('statistics');
+    $schema = module_invoke('statistics', 'schema');
+
     // Expose Drupal Core's accesslog fields to our own API.
-    $accesslog = drupal_get_schema_unprocessed('statistics', 'accesslog');
+    $accesslog = $schema['accesslog'];
     foreach ($accesslog['fields'] as $field => $schema) {
       $default_fields[$field] = array(
         'schema' => $schema,
@@ -188,7 +193,7 @@ function better_statistics_get_default_fields() {
  */
 function better_statistics_get_fields_data() {
   // Include this module's API file because of how core fields are implemented.
-  require_once(drupal_get_path('module', 'better_statistics') .'/better_statistics.statistics.inc');
+  require_once(dirname(__FILE__) . '/better_statistics.statistics.inc');
 
   $fields = variable_get('better_statistics_fields', better_statistics_get_default_fields());
   $field_data = array();
