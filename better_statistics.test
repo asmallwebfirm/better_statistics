@@ -30,15 +30,6 @@ class BetterStatisticsTest extends DrupalWebTestCase {
     );
     parent::setUp($modules);
 
-    // Create a user.
-    $this->admin_user = $this->drupalCreateUser(array(
-      'access administration pages',
-      'administer statistics',
-      'access content',
-      'access statistics',
-    ));
-    $this->drupalLogin($this->admin_user);
-
     // Enable the accesslog.
     variable_set('statistics_enable_access_log', 1);
   }
@@ -51,6 +42,15 @@ class BetterStatisticsTest extends DrupalWebTestCase {
    * Test basic functionality of the module.
    */
   public function testConfigurationChanges() {
+    // Create a user and log it in.
+    $this->admin_user = $this->drupalCreateUser(array(
+      'access administration pages',
+      'administer statistics',
+      'access content',
+      'access statistics',
+    ));
+    $this->drupalLogin($this->admin_user);
+
     // Check to see that the "cache" field is available.
     $this->drupalGet($this->stats_admin);
     $this->assertNoFieldChecked('edit-better-statistics-better-statistics-fields-cache', t('Cache field not enabled.'));
@@ -104,5 +104,29 @@ class BetterStatisticsTest extends DrupalWebTestCase {
       'better_statistics[better_statistics][fields][user_agent]' => FALSE,
     );
     $this->drupalPost($this->stats_admin, $edit, t('Save configuration'));
+  }
+
+  /**
+   * Test data collection functionality.
+   */
+  public function testDataCollection() {
+    // Ensure statistics are collected when caching is disabled.
+    $this->drupalGet('node');
+    $query = db_query('SELECT aid FROM {accesslog}');
+    $rows = $query->rowCount();
+    $this->assertTrue($rows == 1, t('Accesslog data being collected when page cache is disabled.'));
+
+    // Ensure statistics are collected when caching is enabled (cache miss).
+    variable_set('cache', 1);
+    $this->drupalGet('node');
+    $query = db_query('SELECT aid FROM {accesslog}');
+    $rows = $query->rowCount();
+    $this->assertTrue($rows == 2, t('Accesslog data being collected when page cache is enabled (cache miss).'));
+
+    // Ensure statistics are collected when caching is enabled (cache hit).
+    $this->drupalGet('node');
+    $query = db_query('SELECT aid FROM {accesslog}');
+    $rows = $query->rowCount();
+    $this->assertTrue($rows == 3, t('Accesslog data being collected when page cache is enabled (cache hit).'));
   }
 }

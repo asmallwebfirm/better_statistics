@@ -170,7 +170,7 @@ function better_statistics_get_default_fields() {
   if (!isset($default_fields)) {
     // In some contexts, drupal_get_schema_unproccessed may be unavailable, so
     // here, we get the accesslog schema the same way it does.
-    module_load_install('statistics');
+    require_once DRUPAL_ROOT . '/modules/statistics/statistics.install';
     $schema = module_invoke('statistics', 'schema');
 
     // Expose Drupal Core's accesslog fields to our own API.
