@@ -106,12 +106,12 @@ function better_statistics_get_field_value($field) {
 
     case 'cache':
       $cached = NULL;
-      $headers = headers_list();
-      foreach ($headers as $header) {
-        if (strpos($header, 'X-Drupal-Cache:') !== FALSE) {
-          $cached = trim(substr($header, 15));
-          break;
-        }
+      $cache_status = better_statistics_served_from_cache();
+      if ($cache_status === TRUE) {
+        $cached = 'HIT';
+      }
+      elseif ($cache_status === FALSE) {
+        $cached = 'MISS';
       }
       return $cached;
 

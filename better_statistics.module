@@ -72,6 +72,11 @@ function better_statistics_ctools_plugin_api_hook_name() {
 function better_statistics_exit() {
   // If statistics access log is set to run, run our code.
   if (variable_get('statistics_enable_access_log', 0)) {
+
+    // Force a recheck on cache status, just in case this function was called
+    // before the X-Drupal-Cache header was set.
+    $cache_status = better_statistics_served_from_cache(TRUE);
+
     // @see statistics_exit()
     drupal_bootstrap(DRUPAL_BOOTSTRAP_SESSION);
     include_once DRUPAL_ROOT . '/includes/unicode.inc';
@@ -215,4 +220,43 @@ function better_statistics_get_fields_data() {
   }
 
   return $field_data;
+}
+
+
+/**
+ * Determines whether or not the current request is being served from cache.
+ *
+ * Note that you may need to use === to determine the cache status of the page,
+ * because some requests will return NULL, which evaluates to FALSE.
+ *
+ * @param boolean $recheck
+ *   (optional) If set to TRUE, cache status will be manually re-checked.
+ *
+ * @return
+ *   A boolean TRUE if the page is being served from cache, FALSE if the page is
+ *   cacheable, but not served from cache. NULL is returned in the case when the
+ *   page was never cacheable to begin with.
+ */
+function better_statistics_served_from_cache($recheck = FALSE) {
+  static $cached;
+
+  if (!isset($cached) || $recheck) {
+    $headers = headers_list();
+    $hit = array_search('X-Drupal-Cache: HIT', $headers);
+    $miss = array_search('X-Drupal-Cache: MISS', $headers);
+
+    // If neither a hit nor miss header are present, the page wasn't cacheable
+    // to begin with. Return NULL.
+    if ($hit !== FALSE) {
+      $cached = TRUE;
+    }
+    elseif ($miss !== FALSE) {
+      $cached = FALSE;
+    }
+    else {
+      $cached = NULL;
+    }
+  }
+
+  return $cached;
 }

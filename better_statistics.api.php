@@ -124,6 +124,14 @@ function hook_better_statistics_fields() {
       'default' => 0,
       'description' => 'A description about bar.',
     ),
+    // Note that this callback function runs on both regular page requests and
+    // cached page requests. During the latter, Drupal's bootstrap phase is
+    // low and many functions you're used to having will not be available. In
+    // all likelihood, the module for which you are implementing the Statistics
+    // API may not even be loaded. You are responsible for ensuring any inc or
+    // module dependencies are loaded when your callback runs. You may find the
+    // following function of some use:
+    // @see better_statistics_served_from_cache()
     'callback' => 'my_module_get_values',
     'views_field' => array(
       // This is user facing and should be passed through t(), but here, it must
