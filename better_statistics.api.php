@@ -182,5 +182,22 @@ function hook_better_statistics_fields() {
 }
 
 /**
+ * Allows modules to react just before Better Statistics performs access log
+ * field data collection and just after all module.statistics.inc files have
+ * been loaded.
+ *
+ * A good use of this is to call better_statistics_request_is_loggable().
+ *
+ * Implementations of this hook should be placed in your module.statistics.inc.
+ */
+function hook_better_statistics_prelog() {
+  // Never record statistics for user 1.
+  global $user;
+  if ($user->uid == 1) {
+    better_statistics_request_is_loggable(FALSE);
+  }
+}
+
+/**
  * @}
  */

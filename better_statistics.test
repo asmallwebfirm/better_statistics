@@ -12,6 +12,7 @@
 class BetterStatisticsTest extends DrupalWebTestCase {
 
   protected $stats_admin = 'admin/config/system/statistics';
+  protected $perf_admin = 'admin/config/development/performance';
 
   public static function getInfo() {
     return array(
@@ -32,6 +33,9 @@ class BetterStatisticsTest extends DrupalWebTestCase {
 
     // Enable the accesslog.
     variable_set('statistics_enable_access_log', 1);
+
+    // Enable page caching.
+    variable_set('cache', 1);
   }
 
   public function tearDown() {
@@ -39,13 +43,14 @@ class BetterStatisticsTest extends DrupalWebTestCase {
   }
 
   /**
-   * Test basic functionality of the module.
+   * Test admin configuration functionality of the module.
    */
   public function testConfigurationChanges() {
     // Create a user and log it in.
     $this->admin_user = $this->drupalCreateUser(array(
       'access administration pages',
       'administer statistics',
+      'administer site configuration',
       'access content',
       'access statistics',
     ));
@@ -104,6 +109,21 @@ class BetterStatisticsTest extends DrupalWebTestCase {
       'better_statistics[better_statistics][fields][user_agent]' => FALSE,
     );
     $this->drupalPost($this->stats_admin, $edit, t('Save configuration'));
+
+    // Statistics are collected on cached pages by default. Check that this is
+    // reflected in the cache fieldset.
+    $this->drupalGet($this->stats_admin);
+    $this->assertText('Tracking of page requests served from cache is currently enabled', t('Stats/performance settings properly reflect configuration.'));
+
+    // Disable logging of cached pages.
+    $edit = array(
+      'statistics_access_log_restrictions_cache' => FALSE,
+    );
+    $this->drupalPost($this->perf_admin, $edit, t('Save configuration'));
+
+    // Ensure the configuration is reflected.
+    $this->drupalGet($this->stats_admin);
+    $this->assertText('Tracking of page requests served from cache is currently disabled', t('Stats/performance settings properly reflect configuration.'));
   }
 
   /**
@@ -128,5 +148,109 @@ class BetterStatisticsTest extends DrupalWebTestCase {
     $query = db_query('SELECT aid FROM {accesslog}');
     $rows = $query->rowCount();
     $this->assertTrue($rows == 3, t('Accesslog data being collected when page cache is enabled (cache hit).'));
+
+    // Create a user and log it in.
+    $this->admin_user = $this->drupalCreateUser(array(
+      'access administration pages',
+      'administer statistics',
+      'access content',
+      'access statistics',
+      'administer site configuration',
+    ));
+    $this->drupalLogin($this->admin_user);
+
+    // Disable logging of cached page requests.
+    $edit = array(
+      'statistics_access_log_restrictions_cache' => FALSE,
+    );
+    $this->drupalPost($this->perf_admin, $edit, t('Save configuration'));
+
+    // Check page access is not logged.
+    $this->drupalLogout();
+    db_truncate('accesslog')->execute();
+    // First get will be a MISS.
+    $this->drupalGet('node');
+    // Second get will be a HIT.
+    $this->drupalGet('node');
+    $query = db_query('SELECT aid FROM {accesslog}');
+    $rows = $query->rowCount();
+    // We expect the MISS to be logged, the HIT not.
+    $this->assertTrue($rows == 1, t('Accesslog data not being collected when page cache is enabled, and logging of cached pages is disabled.'));
+
+    // Re-enable logging of cached page requests.
+    $this->drupalLogin($this->admin_user);
+    $edit = array(
+      'statistics_access_log_restrictions_cache' => TRUE,
+    );
+    $this->drupalPost($this->perf_admin, $edit, t('Save configuration'));
+
+    // Set statistics to only log anonymous users.
+    $edit = array(
+      'statistics_access_log_restrictions_roles[1]' => 1,
+    );
+    $this->drupalPost($this->stats_admin, $edit, t('Save configuration'));
+
+    // Check page access is not logged.
+    db_truncate('accesslog')->execute();
+    $this->drupalGet('node');
+    $query = db_query('SELECT aid FROM {accesslog}');
+    $rows = $query->rowCount();
+    $this->assertTrue($rows == 0, t('Accesslog data not being collected when logging is only enabled for anonymous users.'));
+
+    // Log out and check page access is logged.
+    $this->drupalLogout();
+    db_truncate('accesslog')->execute();
+    $this->drupalGet('node');
+    $query = db_query('SELECT aid FROM {accesslog}');
+    $rows = $query->rowCount();
+    $this->assertTrue($rows == 1, t('Accesslog data being collected when logging is only enabled for anonymous users.'));
+    $this->drupalLogin($this->admin_user);
+
+    // Re-enable logging of all roles.
+    $edit = array(
+      'statistics_access_log_restrictions_roles[1]' => FALSE,
+    );
+    $this->drupalPost($this->stats_admin, $edit, t('Save configuration'));
+
+    // Disable logging of admin pages.
+    $edit = array(
+      'statistics_access_log_restrictions_pages' => 'admin/*',
+    );
+    $this->drupalPost($this->stats_admin, $edit, t('Save configuration'));
+
+    // Check admin page access is not logged.
+    db_truncate('accesslog')->execute();
+    $this->drupalGet('admin/config'); // for some reason, this logs an access to 'node'
+    db_truncate('accesslog')->execute();
+    $this->drupalGet('admin/config');
+    $query = db_query('SELECT aid FROM {accesslog}');
+    $rows = $query->rowCount();
+    $this->assertTrue($rows == 0, t('Accesslog data not being collected on defined exclusion.'));
+
+    // Check normal page access is logged.
+    db_truncate('accesslog')->execute();
+    $this->drupalGet('node');
+    $query = db_query('SELECT aid FROM {accesslog}');
+    $rows = $query->rowCount();
+    $this->assertTrue($rows == 1, t('Accesslog data being collected when exclusion is defined, but a non-excluded page is loaded.'));
+
+    // Enable logging of only admin pages.
+    $edit = array(
+      'statistics_access_log_restrictions_page' => 1,
+    );
+    $this->drupalPost($this->stats_admin, $edit, t('Save configuration'));
+
+    // Check normal page access is not logged.
+    db_truncate('accesslog')->execute();
+    $this->drupalGet('node');
+    $query = db_query('SELECT aid FROM {accesslog}');
+    $rows = $query->rowCount();
+    $this->assertTrue($rows == 0, t('Accesslog data not being collected when inclusion is defined, but a non-included page is loaded.'));
+
+    // Check admin page access is logged.
+    $this->drupalGet('admin/config');
+    $query = db_query('SELECT aid FROM {accesslog}');
+    $rows = $query->rowCount();
+    $this->assertTrue($rows == 1, t('Accesslog data being collected on defined inclusion.'));
   }
 }

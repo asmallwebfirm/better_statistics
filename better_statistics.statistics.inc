@@ -119,3 +119,54 @@ function better_statistics_get_field_value($field) {
       return truncate_utf8($_SERVER['HTTP_USER_AGENT'], 255);
   }
 }
+
+
+/**
+ * Implements hook_better_statistics_prelog().
+ *
+ * Better Statistics provides inclusion/exclusion restrictions for collecting
+ * access log data based on request paths, user roles and cache status.
+ */
+function better_statistics_better_statistics_prelog() {
+  // Skip if page is served from cache and Better Statistics is set to
+  // exclude logging cached requests.
+  $cache_status = better_statistics_served_from_cache();
+  if ($cache_status && !variable_get('statistics_access_log_restrictions_cache', TRUE)) {
+    better_statistics_request_is_loggable(FALSE);
+    return;
+  }
+
+  // If there are page-based restrictions, check the page.
+  $restrict_pages = variable_get('statistics_access_log_restrictions_page', 0);
+  $pages = drupal_strtolower(variable_get('statistics_access_log_restrictions_pages', ''));
+  if ($restrict_pages || !empty($pages)) {
+    // Make sure drupal_match_path() is available.
+    require_once DRUPAL_ROOT . '/' . variable_get('path_inc', 'includes/path.inc');
+
+    // Convert the Drupal path to lowercase.
+    $path = drupal_strtolower(drupal_get_path_alias($_GET['q']));
+    // Compare the lowercase internal and lowercase path alias (if any).
+    $page_match = drupal_match_path($path, $pages);
+    if ($path != $_GET['q']) {
+      $page_match = $page_match || drupal_match_path($_GET['q'], $pages);
+    }
+
+    if ($page_match xor $restrict_pages) {
+      better_statistics_request_is_loggable(FALSE);
+      return;
+    }
+  }
+
+  // If role restrictions are specified, check the array.
+  $roles = variable_get('statistics_access_log_restrictions_roles', array());
+  $restrictions_count = array_count_values($roles);
+  if (isset($restrictions_count[0]) && $restrictions_count[0] < count($roles)) {
+    // Skip if user is not part of an included role.
+    global $user;
+    $roles_check = array_intersect($roles, array_keys($user->roles));
+    if (empty($roles_check)) {
+      better_statistics_request_is_loggable(FALSE);
+      return;
+    }
+  }
+}

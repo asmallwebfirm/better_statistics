@@ -81,21 +81,30 @@ function better_statistics_exit() {
     drupal_bootstrap(DRUPAL_BOOTSTRAP_SESSION);
     include_once DRUPAL_ROOT . '/includes/unicode.inc';
 
-    // Get all declared fields and their computed values.
-    $fields = better_statistics_get_fields_data();
+    // Load all relevant module.statistics.inc files for hook invocations.
+    better_statistics_load_active_incs();
 
-    // Now that we have data, try to insert it.
-    try {
-      db_insert('accesslog')->fields($fields)->execute();
-    }
-    catch (Exception $e) {
-      // At least log core fields.
-      $defaults = better_statistics_get_default_fields();
-      $core_fields = array_intersect_key($fields, $defaults);
-      db_insert('accesslog')->fields($core_fields)->execute();
+    // Allow all modules to react before logging begins.
+    module_invoke_all('better_statistics_prelog');
 
-      // Log the error.
-      watchdog('better statistics', 'There was an error collecting statistics data:<br /><br />@error', array('@error' => $e->getMessage()), WATCHDOG_ERROR);
+    // Log the request if the request is loggable.
+    if (better_statistics_request_is_loggable()) {
+      // Get all declared fields and their computed values.
+      $fields = better_statistics_get_fields_data();
+
+      // Now that we have data, try to insert it.
+      try {
+        db_insert('accesslog')->fields($fields)->execute();
+      }
+      catch (Exception $e) {
+        // At least log core fields.
+        $defaults = better_statistics_get_default_fields();
+        $core_fields = array_intersect_key($fields, $defaults);
+        db_insert('accesslog')->fields($core_fields)->execute();
+
+        // Log the error.
+        watchdog('better statistics', 'There was an error collecting statistics data:<br /><br />@error', array('@error' => $e->getMessage()), WATCHDOG_ERROR);
+      }
     }
   }
 
@@ -139,6 +148,17 @@ function better_statistics_flush_caches() {
 function better_statistics_form_statistics_settings_form_alter(&$form, &$form_state, $form_id) {
   module_load_include('inc', 'better_statistics', 'better_statistics.admin');
   _better_statistics_form_statistics_settings_form_alter($form, $form_state, $form_id);
+}
+
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ *
+ * @see _better_statistics_form_system_performance_settings_form_alter()
+ */
+function better_statistics_form_system_performance_settings_alter(&$form, &$form_state, $form_id) {
+  module_load_include('inc', 'better_statistics', 'better_statistics.admin');
+  _better_statistics_form_system_performance_settings_alter($form, $form_state, $form_id);
 }
 
 
@@ -197,22 +217,14 @@ function better_statistics_get_default_fields() {
  * Returns data for all valid, declared fields in preparation for DB insertion.
  */
 function better_statistics_get_fields_data() {
-  // Include this module's API file because of how core fields are implemented.
-  require_once(dirname(__FILE__) . '/better_statistics.statistics.inc');
+  // Ensure all module.statistics.inc files are loaded.
+  better_statistics_load_active_incs();
 
   $fields = variable_get('better_statistics_fields', better_statistics_get_default_fields());
   $field_data = array();
 
   // Loop through all custom fields.
   foreach ($fields as $field => $data) {
-    // If there's an inc file and it hasn't been loaded yet, load it.
-    if (isset($data['_file']) && !isset($already[$data['_file']])) {
-      if (file_exists(DRUPAL_ROOT . '/' . $data['_file'])) {
-        require_once(DRUPAL_ROOT . '/' . $data['_file']);
-        $already[$data['_file']] = TRUE;
-      }
-    }
-
     // Only insert data into this field if there's a callback to get data.
     if (is_callable($data['callback'])) {
       $field_data[$field] = $data['callback']($field);
@@ -222,6 +234,50 @@ function better_statistics_get_fields_data() {
   return $field_data;
 }
 
+
+/**
+ * Loads module.statistics.inc files for all active fields.
+ */
+function better_statistics_load_active_incs() {
+  // Prevent this function from loading it multiple times.
+  static $loaded;
+
+  if (empty($loaded)) {
+    $loaded = TRUE;
+
+    // Include this module's API file because of how core fields are implemented.
+    require_once(dirname(__FILE__) . '/better_statistics.statistics.inc');
+
+    $fields = variable_get('better_statistics_fields', better_statistics_get_default_fields());
+
+    // Loop through each declaring field and require associated files.
+    foreach ($fields as $field => $data) {
+      // If there's an inc file and it hasn't been loaded yet, load it.
+      if (isset($data['_file'])) {
+        if (file_exists(DRUPAL_ROOT . '/' . $data['_file'])) {
+          require_once(DRUPAL_ROOT . '/' . $data['_file']);
+       }
+      }
+    }
+  }
+}
+
+
+/**
+ * Determines the loggability of the current request.
+ *
+ * @return
+ *   TRUE if the current page can be logged, FALSE otherwise.
+ */
+function better_statistics_request_is_loggable($allow_logging = NULL) {
+  $allow_logging_static = &drupal_static(__FUNCTION__, TRUE);
+
+  if (isset($allow_logging)) {
+    $allow_logging_static = $allow_logging;
+  }
+
+  return $allow_logging_static;
+}
 
 /**
  * Determines whether or not the current request is being served from cache.

@@ -54,4 +54,8 @@ function better_statistics_uninstall() {
   }
 
   variable_del('better_statistics_fields');
+  variable_del('statistics_access_log_restrictions_cache');
+  variable_del('statistics_access_log_restrictions_page');
+  variable_del('statistics_access_log_restrictions_pages');
+  variable_del('statistics_access_log_restrictions_roles');
 }

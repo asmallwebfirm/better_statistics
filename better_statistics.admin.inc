@@ -14,13 +14,15 @@ function _better_statistics_form_statistics_settings_form_alter(&$form, &$form_s
   $log_description = &$form['access']['statistics_enable_access_log']['#description'];
   $log_description .= ' ' . t('Also required by the Better Statistics module.');
 
-  // Create a fieldset for our settings.
+  $form['access']['#weight'] = -10;
+
+  // Create a fieldset for data collection settings.
   $form['better_statistics'] = array(
     '#type' => 'fieldset',
     '#collapsible' => FALSE,
-    '#title' => t('Better statistics settings'),
+    '#title' => t('Access log data'),
     '#description' => t('Select the data you would like to collect on each page request. Note that unchecking a field below will permanently delete all data collected for that field.'),
-    '#weight' => 0,
+    '#weight' => -8,
     '#tree' => TRUE,
     // Only show this fieldset if the accesslog is enabled.
     '#states' => array(
@@ -105,9 +107,97 @@ function _better_statistics_form_statistics_settings_form_alter(&$form, &$form_s
     );
   }
 
+  $form['access_log_restrictions'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Access log restrictions'),
+    '#description' => t('Define restrictions on when page requests are logged in the access log. As an example, you may want to disable logging in admin areas or, only log access for specific user roles.'),
+    '#weight' => -6,
+    // Only show this fieldset if the accesslog is enabled.
+    '#states' => array(
+      'visible' => array(
+        ':input[name="statistics_enable_access_log"]' => array('checked' => TRUE),
+      ),
+    ),
+  );
+  // Cache-based restrictions reference.
+  if (variable_get('cache', 0)) {
+    $form['access_log_restrictions']['caching'] = array(
+      '#type' => 'fieldset',
+      '#collapsible' => TRUE,
+      '#collapsed' => TRUE,
+      '#title' => t('Cache'),
+    );
+    $form['access_log_restrictions']['caching']['log_cached_status'] = array(
+      '#markup' => t('Tracking of page requests served from cache is currently !log_cached_status. Visit !the_performance_configuration_page to change settings.', array(
+        '!log_cached_status' => '<strong>' . (variable_get('statistics_access_log_restrictions_cache', TRUE) ? t('enabled') : t('disabled')) . '</strong>',
+        '!the_performance_configuration_page' => l(t('the performance configuration page'), 'admin/config/development/performance'),
+      )),
+    );
+  }
+  // Page-based restrictions.
+  $form['access_log_restrictions']['pages'] = array(
+    '#type' => 'fieldset',
+    '#collapsible' => TRUE,
+    '#collapsed' => TRUE,
+    '#title' => t('Pages'),
+  );
+  $form['access_log_restrictions']['pages']['statistics_access_log_restrictions_page'] = array(
+    '#type' => 'radios',
+    '#options' => array(
+      0 => t('All pages except those listed'),
+      1 => t('Only the listed pages'),
+    ),
+    '#title' => t('Log requests on specific pages'),
+    '#default_value' => variable_get('statistics_access_log_restrictions_page', 0),
+  );
+  $form['access_log_restrictions']['pages']['statistics_access_log_restrictions_pages'] = array(
+    '#type' => 'textarea',
+    '#rows' => 2,
+    '#default_value' => variable_get('statistics_access_log_restrictions_pages', ''),
+    '#description' => t("Specify pages by using their paths. Enter one path per line. The '*' character is a wildcard. Example paths are %blog for the blog page and %blog-wildcard for every personal blog. %front is the front page.", array(
+      '%blog' => 'blog',
+      '%blog-wildcard' => 'blog/*',
+      '%front' => '<front>',
+    )),
+  );
+  // Role-based restrictions.
+  $form['access_log_restrictions']['roles'] = array(
+    '#type' => 'fieldset',
+    '#collapsible' => TRUE,
+    '#collapsed' => TRUE,
+    '#title' => t('Roles'),
+    '#group' => 'restrictions_settings',
+  );
+  $form['access_log_restrictions']['roles']['statistics_access_log_restrictions_roles'] = array(
+    '#type' => 'checkboxes',
+    '#options' => user_roles(),
+    '#title' => t('Log requests for specific roles'),
+    '#default_value' => variable_get('statistics_access_log_restrictions_roles', array()),
+    '#description' => t('Log requests only for the selected role(s). If you select no roles, statistics will be collected for all users.'),
+  );
+
   // Add a submit handler to handle schema changes as a result of changes here.
   // Fire before the system settings; we don't want it to save variables.
   array_unshift($form['#submit'], 'better_statistics_settings_form_submit');
+}
+
+
+/**
+ * Makes alterations to the core site performance settings configuration form.
+ */
+function _better_statistics_form_system_performance_settings_alter(&$form, &$form_state, $form_id) {
+  $form['caching']['statistics_access_log_restrictions_cache'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Log access statistics for pages served from cache'),
+    '#description' => t('Logging access statistics on cached page requests can negatively impact performance and scalability.'),
+    '#default_value' => variable_get('statistics_access_log_restrictions_cache', TRUE),
+    // Only show this field if caching is enabled.
+    '#states' => array(
+      'visible' => array(
+        ':input[name="cache"]' => array('checked' => TRUE),
+      ),
+    ),
+  );
 }
 
 
