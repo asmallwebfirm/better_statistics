@@ -28,6 +28,7 @@ class BetterStatisticsTest extends DrupalWebTestCase {
       'statistics',
       'ctools',
       'better_statistics',
+      'dblog',
     );
     parent::setUp($modules);
 
@@ -158,6 +159,37 @@ class BetterStatisticsTest extends DrupalWebTestCase {
       'administer site configuration',
     ));
     $this->drupalLogin($this->admin_user);
+
+    // Disable logging of <front> page.
+    $edit = array(
+      'statistics_access_log_restrictions_pages' => '<front>',
+    );
+    $this->drupalPost($this->stats_admin, $edit, t('Save configuration'));
+
+    // Check page access to <front> is not logged, and no issues with
+    // alias resolution in case of caching.
+    $this->drupalLogout();
+    db_truncate('accesslog')->execute();
+    db_truncate('watchdog')->execute();
+    // First get will be a MISS.
+    $this->drupalGet('node');
+    // Second get will be a HIT.
+    $this->drupalGet('node');
+    // We expect no access to be logged.
+    $query = db_query('SELECT aid FROM {accesslog}');
+    $rows = $query->rowCount();
+    $this->assertTrue($rows == 0, t('Accesslog data for access to "node" not being collected, when page restriction for "front" is set.'));
+    // We expect no php type entries in the watchdog.
+    $query = db_query("SELECT wid FROM {watchdog} where type = 'php'");
+    $rows = $query->rowCount();
+    $this->assertTrue($rows == 0, t('No errors matching "node" request path to "front" alias.'));
+
+    // Reset pages restrictions.
+    $this->drupalLogin($this->admin_user);
+    $edit = array(
+      'statistics_access_log_restrictions_pages' => '',
+    );
+    $this->drupalPost($this->stats_admin, $edit, t('Save configuration'));
 
     // Disable logging of cached page requests.
     $edit = array(

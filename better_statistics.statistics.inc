@@ -143,6 +143,12 @@ function better_statistics_better_statistics_prelog() {
     // Make sure drupal_match_path() is available.
     require_once DRUPAL_ROOT . '/' . variable_get('path_inc', 'includes/path.inc');
 
+    // Make sure language is initialized for drupal_get_path_alias().
+    global $language_url;
+    if (!isset($language_url)) {
+      drupal_language_initialize();
+    }
+
     // Convert the Drupal path to lowercase.
     $path = drupal_strtolower(drupal_get_path_alias($_GET['q']));
     // Compare the lowercase internal and lowercase path alias (if any).
