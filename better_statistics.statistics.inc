@@ -116,7 +116,7 @@ function better_statistics_get_field_value($field) {
       return $cached;
 
     case 'user_agent':
-      return truncate_utf8($_SERVER['HTTP_USER_AGENT'], 255);
+      return isset($_SERVER['HTTP_USER_AGENT']) ? truncate_utf8($_SERVER['HTTP_USER_AGENT'], 255) : '';
   }
 }
 
