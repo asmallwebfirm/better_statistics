@@ -199,5 +199,36 @@ function hook_better_statistics_prelog() {
 }
 
 /**
+ * Log access statistics.
+ *
+ * This hook allows modules to route access statistics to custom destinations in
+ * custom formats such as syslog, flat files, csv, etc.
+ *
+ * Note that Better Statistics logs access data to the Drupal {accesslog} table
+ * by default. You may wish to disable this functionality by instructing users
+ * to add a variable setting in settings.php, or manually doing so yourself by
+ * setting the global variable in hook_better_statistics_prelog().
+ *
+ * The variable in question is "statistics_log_to_db."
+ *
+ * @param $data
+ *   An array of access statistics data keyed by field name.
+ */
+function hook_better_statistics_log($data) {
+  // Send data to Google Analytics using php-ga.
+  $tracker = new GoogleAnalytics\Tracker('UA-12345678-9', 'example.com');
+  $session = new GoogleAnalytics\Session();
+  $visitor = new GoogleAnalytics\Visitor();
+  $visitor->setIpAddress(ip_address());
+  $page = new GoogleAnalytics\Page(request_path());
+  $n = 1;
+  foreach ($data as $name => $value) {
+    $custom_var = new GoogleAnalytics\CustomVariable($n++, $name, $value);
+    $tracker->addCustomVar($custom_var);
+  }
+  $tracker->trackPageview($page, $session, $visitor);
+}
+
+/**
  * @}
  */

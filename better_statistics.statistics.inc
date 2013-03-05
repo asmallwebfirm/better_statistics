@@ -176,3 +176,28 @@ function better_statistics_better_statistics_prelog() {
     }
   }
 }
+
+
+/**
+ * Implements hook_better_statistics_log().
+ *
+ * Logs Statistics data in the {accesslog} table.
+ */
+function better_statistics_better_statistics_log($data) {
+  // Check that we're meant to log Statistics to the DB.
+  if (variable_get('statistics_log_to_db', TRUE)) {
+    // Now that we have data, try to insert it.
+    try {
+      db_insert('accesslog')->fields($data)->execute();
+    }
+    catch (Exception $e) {
+      // At least log core fields.
+      $defaults = better_statistics_get_default_fields();
+      $core_fields = array_intersect_key($data, $defaults);
+      db_insert('accesslog')->fields($core_fields)->execute();
+
+      // Log the error.
+      watchdog('better statistics', 'There was an error collecting statistics data:<br /><br />@error', array('@error' => $e->getMessage()), WATCHDOG_ERROR);
+    }
+  }
+}

@@ -92,19 +92,8 @@ function better_statistics_exit() {
       // Get all declared fields and their computed values.
       $fields = better_statistics_get_fields_data();
 
-      // Now that we have data, try to insert it.
-      try {
-        db_insert('accesslog')->fields($fields)->execute();
-      }
-      catch (Exception $e) {
-        // At least log core fields.
-        $defaults = better_statistics_get_default_fields();
-        $core_fields = array_intersect_key($fields, $defaults);
-        db_insert('accesslog')->fields($core_fields)->execute();
-
-        // Log the error.
-        watchdog('better statistics', 'There was an error collecting statistics data:<br /><br />@error', array('@error' => $e->getMessage()), WATCHDOG_ERROR);
-      }
+      // Allow modules to log statistics data.
+      module_invoke_all('better_statistics_log', $fields);
     }
   }
 
