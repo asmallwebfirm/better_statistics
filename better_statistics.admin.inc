@@ -224,71 +224,88 @@ function _better_statistics_settings_form_submit($form, &$form_state) {
   $active = variable_get('better_statistics_fields', $defaults);
 
   // Compare the fields we turned up above to what currently exists.
-  $fields_added = array_diff_key($default_and_custom, $active);
-  $fields_removed = array_diff_key($active, $default_and_custom);
+  $fields_added = array_keys(array_diff_key($default_and_custom, $active));
+  better_statistics_enable_fields($fields_added);
+  $fields_removed = array_keys(array_diff_key($active, $default_and_custom));
+  better_statistics_disable_fields($fields_removed);
 
-  // If fields were added, add them to the DB and the active store.
-  if (!empty($fields_added)) {
-    // Loop through each field.
-    foreach ($fields_added as $field => $data) {
-      // Verify the field is valid.
-      $schema_set = isset($data['schema']) ? is_array($data['schema']) : FALSE;
-      $callable = isset($data['callback']) ? is_callable($data['callback']) : FALSE;
-      $field_exists = db_field_exists('accesslog', $field);
+  // Ensure Better Statistics data isn't unintentionally processed.
+  unset($form_state['values']['better_statistics']);
+}
 
-      if ($schema_set && $callable && !$field_exists) {
-        // Add the field to the database.
-        db_add_field('accesslog', $field, $data['schema']);
 
-        // Add the field to the active store.
-        $active += array($field => $data);
+/**
+ * Enables a list of statistics fields.
+ *
+ * @param $fields
+ *   An array of field names to enable.
+ *
+ * @return
+ *   An array of statistics fields that were enabled.
+ */
+function better_statistics_enable_fields($fields) {
+  // Get all declared and active fields.
+  $declared = _better_statistics_get_custom_fields_by_module();
+  $active = variable_get('better_statistics_fields', better_statistics_get_default_fields());
+  $successfully_enabled = array();
 
-        // Log the field addition in watchdog.
-        watchdog('better statistics', 'Successfully added field %field to accesslog.', array(
-          '%field' => $field,
-        ), WATCHDOG_NOTICE);
-      }
-      // Special case: support for legacy default field additions by Better
-      // Statistics module. If this is detected to be a field addition but the
-      // field already exists, we just need to add it to the active store.
-      elseif ($field_exists) {
-        // Add the field to the active store.
-        $active += array($field => $data);
-      }
-      else {
-        // Alert the failure.
-        watchdog('better statistics', 'Unable to add field %field to accesslog.', array(
-          '%field' => $field,
-        ), WATCHDOG_WARNING);
+  // Accept a single field enable.
+  if (!is_array($fields)) {
+    $fields = array($fields);
+  }
+
+  // Load field schema data for all fields being enabled.
+  $fields_added = array();
+  foreach ($fields as $name) {
+    foreach ($declared as $module => $module_fields) {
+      if (isset($module_fields[$name])) {
+        $fields_added[$name] = $module_fields[$name];
       }
     }
   }
 
-  // If fields were removed, remove them from the DB and the active store.
-  if (!empty($fields_removed)) {
-    // Loop through each missing field.
-    foreach ($fields_removed as $field => $data) {
-      // Verify the field exists.
-      if (db_field_exists('accesslog', $field)) {
-        // Drop the field from the database.
-        db_drop_field('accesslog', $field);
+   // Loop through each field.
+  foreach ($fields_added as $field => $data) {
+    // Verify the field is valid.
+    $schema_set = isset($data['schema']) ? is_array($data['schema']) : FALSE;
+    $callable = isset($data['callback']) ? is_callable($data['callback']) : FALSE;
+    $field_exists = db_field_exists('accesslog', $field);
 
-        // Remove the field from the active store.
-        unset($active[$field]);
+    if ($schema_set && $callable && !$field_exists) {
+      // Add the field to the database.
+      db_add_field('accesslog', $field, $data['schema']);
 
-        // Log the field removal in watchdog.
-        watchdog('better statistics', 'Successfully dropped field %field from accesslog.', array(
-          '%field' => $field,
-        ), WATCHDOG_NOTICE);
-      }
+      // Add the field to the active store.
+      $active += array($field => $data);
+
+      // Log the field addition in watchdog.
+      watchdog('better statistics', 'Successfully added field %field to accesslog.', array(
+        '%field' => $field,
+      ), WATCHDOG_NOTICE);
+
+      // Add key to the list of fields successfully added.
+      $successfully_enabled[] = $field;
+    }
+    // Special case: support for legacy default field additions by Better
+    // Statistics module. If this is detected to be a field addition but the
+    // field already exists, we just need to add it to the active store.
+    elseif ($field_exists) {
+      // Add the field to the active store.
+      $active += array($field => $data);
+
+      // Add key to the list of fields successfully added.
+      $successfully_enabled[] = $field;
+    }
+    else {
+      // Alert the failure.
+      watchdog('better statistics', 'Unable to add field %field to accesslog.', array(
+        '%field' => $field,
+      ), WATCHDOG_WARNING);
     }
   }
 
   // Save the active store with any changes.
   variable_set('better_statistics_fields', $active);
-
-  // Unset values so they're not saved by the system form handler.
-  unset($form_state['values']['better_statistics']);
 
   // It can be convenient to call the field update function after configuration.
   _better_statistics_update_fields();
@@ -297,8 +314,74 @@ function _better_statistics_settings_form_submit($form, &$form_state) {
   if (module_exists('views')) {
     cache_clear_all('views_data:', 'cache_views', TRUE);
   }
+
+  return $successfully_enabled;
 }
 
+
+/**
+ * Disables a list of statistics fields.
+ *
+ * @param $fields
+ *   An array of statistics fields to be disabled.
+ *
+ * @return
+ *   An array of the statistics fields that were disabled.
+ */
+function better_statistics_disable_fields($fields) {
+  // Get all declared and active fields.
+  $declared = _better_statistics_get_custom_fields_by_module();
+  $active = variable_get('better_statistics_fields', better_statistics_get_default_fields());
+  $successfully_disabled = array();
+
+  // Accept a single field enable.
+  if (!is_array($fields)) {
+    $fields = array($fields);
+  }
+
+  // Load field schema data for all fields being enabled.
+  $fields_removed = array();
+  foreach ($fields as $name) {
+    foreach ($declared as $module => $module_fields) {
+      if (isset($module_fields[$name])) {
+        $fields_removed[$name] = $module_fields[$name];
+      }
+    }
+  }
+
+  // Loop through each missing field.
+  foreach ($fields_removed as $field => $data) {
+    // Verify the field exists.
+    if (db_field_exists('accesslog', $field)) {
+      // Drop the field from the database.
+      db_drop_field('accesslog', $field);
+
+      // Remove the field from the active store.
+      unset($active[$field]);
+
+      // Log the field removal in watchdog.
+      watchdog('better statistics', 'Successfully dropped field %field from accesslog.', array(
+        '%field' => $field,
+      ), WATCHDOG_NOTICE);
+
+      // Add key to the list of fields successfully removed.
+      $successfully_disabled[] = $field;
+    }
+  }
+
+  // Save the active store with any changes.
+  variable_set('better_statistics_fields', $active);
+
+  // It can be convenient to call the field update function after configuration.
+  _better_statistics_update_fields();
+
+  // Clear the Views data cache so fields are registered.
+  if (module_exists('views')) {
+    cache_clear_all('views_data:', 'cache_views', TRUE);
+  }
+
+  return $successfully_disabled;
+}
 
 /**
  * Determines whether or not accesslog fields should be altered, and if so,
