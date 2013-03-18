@@ -284,5 +284,30 @@ class BetterStatisticsTest extends DrupalWebTestCase {
     $query = db_query('SELECT aid FROM {accesslog}');
     $rows = $query->rowCount();
     $this->assertTrue($rows == 1, t('Accesslog data being collected on defined inclusion.'));
+
+    // Reset page settings.
+    $edit = array(
+      'statistics_access_log_restrictions_page' => 0,
+    );
+    $this->drupalPost($this->stats_admin, $edit, t('Save configuration'));
+
+    // By default, a request with a DNT header should have no effect.
+    db_truncate('accesslog')->execute();
+    $this->drupalGet('node', array(), array('DNT: 1'));
+    $query = db_query('SELECT aid FROM {accesslog}');
+    $rows = $query->rowCount();
+    $this->assertTrue($rows == 1, t('Accesslog data being collected by default when do not track headers are provided.'));
+
+    // Configure the module to respect the DNT header.
+    variable_set('statistics_access_log_restrictions_dnt', TRUE);
+
+    // A request with a DNT header should not be logged.
+    $this->drupalGet('node', array(), array('DNT: 1'));
+    $query = db_query('SELECT aid FROM {accesslog}');
+    $rows = $query->rowCount();
+    $this->assertTrue($rows == 1, t('Accesslog data not collected when do not track headers are provided.'));
+
+    // Reset the DNT configuration.
+    variable_set('statistics_access_log_restrictions_dnt', FALSE);
   }
 }

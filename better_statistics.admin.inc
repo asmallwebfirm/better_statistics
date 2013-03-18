@@ -160,20 +160,26 @@ function _better_statistics_form_statistics_settings_form_alter(&$form, &$form_s
       '%front' => '<front>',
     )),
   );
-  // Role-based restrictions.
-  $form['access_log_restrictions']['roles'] = array(
+  // User-based restrictions.
+  $form['access_log_restrictions']['users'] = array(
     '#type' => 'fieldset',
     '#collapsible' => TRUE,
     '#collapsed' => TRUE,
-    '#title' => t('Roles'),
+    '#title' => t('Users'),
     '#group' => 'restrictions_settings',
   );
-  $form['access_log_restrictions']['roles']['statistics_access_log_restrictions_roles'] = array(
+  $form['access_log_restrictions']['users']['statistics_access_log_restrictions_roles'] = array(
     '#type' => 'checkboxes',
     '#options' => user_roles(),
     '#title' => t('Log requests for specific roles'),
     '#default_value' => variable_get('statistics_access_log_restrictions_roles', array()),
     '#description' => t('Log requests only for the selected role(s). If you select no roles, statistics will be collected for all users.'),
+  );
+  $form['access_log_restrictions']['users']['statistics_access_log_restrictions_dnt'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Respect the "Do Not Track" header'),
+    '#default_value' => variable_get('statistics_access_log_restrictions_dnt', FALSE),
+    '#description' => t('When checked, statistics will not be collected for users who have "do not track" enabled in their browsers.'),
   );
 
   // Add a submit handler to handle schema changes as a result of changes here.

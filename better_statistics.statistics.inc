@@ -175,6 +175,14 @@ function better_statistics_better_statistics_prelog() {
       return;
     }
   }
+
+  // If DNT restrictions are specified, check headers.
+  if (variable_get('statistics_access_log_restrictions_dnt', FALSE)) {
+    // Respect the "do not track" header.
+    if (isset($_SERVER['HTTP_DNT']) && $_SERVER['HTTP_DNT']) {
+      better_statistics_request_is_loggable(FALSE);
+    }
+  }
 }
 
 
