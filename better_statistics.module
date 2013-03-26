@@ -206,9 +206,6 @@ function better_statistics_get_default_fields() {
  * Returns data for all valid, declared fields in preparation for DB insertion.
  */
 function better_statistics_get_fields_data() {
-  // Ensure all module.statistics.inc files are loaded.
-  better_statistics_load_active_incs();
-
   $fields = variable_get('better_statistics_fields', better_statistics_get_default_fields());
   $field_data = array();
 
@@ -237,15 +234,14 @@ function better_statistics_load_active_incs() {
     // Include this module's API file because of how core fields are implemented.
     require_once(dirname(__FILE__) . '/better_statistics.statistics.inc');
 
-    $fields = variable_get('better_statistics_fields', better_statistics_get_default_fields());
-
-    // Loop through each declaring field and require associated files.
-    foreach ($fields as $field => $data) {
+    // Loop through each file stored in the active incs list and include it.
+    // These are stored in a variable rather than being assembled dynamically
+    // due to the nature of cached pages and their bootstrap status.
+    $incs = variable_get('better_statistics_active_incs', array());
+    foreach ($incs as $file) {
       // If there's an inc file and it hasn't been loaded yet, load it.
-      if (isset($data['_file'])) {
-        if (file_exists(DRUPAL_ROOT . '/' . $data['_file'])) {
-          require_once(DRUPAL_ROOT . '/' . $data['_file']);
-       }
+      if (file_exists($file)) {
+        require_once($file);
       }
     }
   }

@@ -481,6 +481,13 @@ function _better_statistics_update_fields() {
 
   // Save the active store with any changes.
   variable_set('better_statistics_fields', $active);
+
+  // Save off a list of active inc files to be loaded.
+  $active_incs = array();
+  foreach (_better_statistics_include_handlers() as $module => $api_info) {
+    $active_incs[] = $api_info['file_required'];
+  }
+  variable_set('better_statistics_active_incs', $active_incs);
 }
 
 
