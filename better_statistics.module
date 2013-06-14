@@ -339,6 +339,9 @@ function better_statistics_get_fields_data() {
     }
   }
 
+  // The AID field should be removed in order to auto-increment.
+  unset($field_data['aid']);
+
   return $field_data;
 }
 
