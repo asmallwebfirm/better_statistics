@@ -13,6 +13,8 @@ class BetterStatisticsTest extends DrupalWebTestCase {
 
   protected $stats_admin = 'admin/config/system/statistics';
   protected $perf_admin = 'admin/config/development/performance';
+  protected $ajax_accesslog = 'statistics/ajax/accesslog';
+  protected $ajax_entityview = 'statistics/ajax/entity_view';
 
   public static function getInfo() {
     return array(
@@ -33,10 +35,13 @@ class BetterStatisticsTest extends DrupalWebTestCase {
     parent::setUp($modules);
 
     // Enable the accesslog.
-    variable_set('statistics_enable_access_log', 1);
+    variable_set('statistics_enable_access_log', BETTER_STATISTICS_ACCESSLOG_DEFAULT);
 
     // Enable page caching.
     variable_set('cache', 1);
+
+    // Create a node.
+    $this->node = $this->drupalCreateNode();
   }
 
   public function tearDown() {
@@ -63,7 +68,7 @@ class BetterStatisticsTest extends DrupalWebTestCase {
 
     // Enable the cache field.
     $edit = array(
-      'statistics_enable_access_log' => TRUE,
+      'statistics_enable_access_log' => BETTER_STATISTICS_ACCESSLOG_DEFAULT,
       'better_statistics[better_statistics][fields][cache]' => TRUE,
     );
     $this->drupalPost($this->stats_admin, $edit, t('Save configuration'));
@@ -74,7 +79,7 @@ class BetterStatisticsTest extends DrupalWebTestCase {
 
     // Disable the cache field.
     $edit = array(
-      'statistics_enable_access_log' => TRUE,
+      'statistics_enable_access_log' => BETTER_STATISTICS_ACCESSLOG_DEFAULT,
       'better_statistics[better_statistics][fields][cache]' => FALSE,
     );
     $this->drupalPost($this->stats_admin, $edit, t('Save configuration'));
@@ -86,7 +91,7 @@ class BetterStatisticsTest extends DrupalWebTestCase {
     // @todo Split these tests off maybe?
     // Enable the user_agent field.
     $edit = array(
-      'statistics_enable_access_log' => TRUE,
+      'statistics_enable_access_log' => BETTER_STATISTICS_ACCESSLOG_DEFAULT,
       'better_statistics[better_statistics][fields][user_agent]' => TRUE,
     );
     $this->drupalPost($this->stats_admin, $edit, t('Save configuration'));
@@ -106,7 +111,7 @@ class BetterStatisticsTest extends DrupalWebTestCase {
 
     // Disable the user_agent field.
     $edit = array(
-      'statistics_enable_access_log' => TRUE,
+      'statistics_enable_access_log' => BETTER_STATISTICS_ACCESSLOG_DEFAULT,
       'better_statistics[better_statistics][fields][user_agent]' => FALSE,
     );
     $this->drupalPost($this->stats_admin, $edit, t('Save configuration'));
@@ -125,6 +130,77 @@ class BetterStatisticsTest extends DrupalWebTestCase {
     // Ensure the configuration is reflected.
     $this->drupalGet($this->stats_admin);
     $this->assertText('Tracking of page requests served from cache is currently disabled', t('Stats/performance settings properly reflect configuration.'));
+
+    // Check that client-side only mode does not log any data for both
+    // HTML-based and callback-based URLs from the server side.
+    $edit = array(
+      'statistics_enable_access_log' => BETTER_STATISTICS_ACCESSLOG_CLIENT,
+    );
+    $this->drupalPost($this->stats_admin, $edit, t('Save configuration'));
+    db_truncate('accesslog')->execute();
+    $this->drupalGet('rss.xml');
+    $this->drupalGet('node');
+    $query = db_query('SELECT aid FROM {accesslog}');
+    $rows = $query->rowCount();
+    $this->assertTrue($rows == 0, t('Accesslog data not being collected server-side when in client-side only mode.'));
+
+    // Ensure the BS JS API snippet and file are included on the page.
+    $js_cache = variable_get('drupal_js_cache_files');
+    $bs_js_file = file_create_url($js_cache[key($js_cache)]);
+    $this->assertRaw("w['BetterStatsObj']", t('Found reference to BS JS API async loader.'));
+    $this->assertRaw($bs_js_file, t('Found reference to BS JS API file.'));
+
+    // Check that mixed-mode logs data on callback-based pages, but not
+    // HTML-based pages from the server-side.
+    $edit = array(
+      'statistics_enable_access_log' => BETTER_STATISTICS_ACCESSLOG_MIXED,
+    );
+    $this->drupalPost($this->stats_admin, $edit, t('Save configuration'));
+    db_truncate('accesslog')->execute();
+    $this->drupalGet('rss.xml');
+    $query = db_query('SELECT aid FROM {accesslog}');
+    $rows = $query->rowCount();
+    $this->assertTrue($rows == 1, t('Accesslog data being collected server-side when in mixed mode on non-HTML pages.'));
+    $this->drupalGet('node');
+    $query = db_query('SELECT aid FROM {accesslog}');
+    $rows = $query->rowCount();
+    $this->assertTrue($rows == 1, t('Accesslog data not being collected server-side when in mixed mode on HTML pages.'));
+
+    // Ensure the BS JS API snippet and file are included on the page.
+    $js_cache = variable_get('drupal_js_cache_files');
+    $bs_js_file = file_create_url($js_cache[key($js_cache)]);
+    $this->assertRaw("w['BetterStatsObj']", t('Found reference to BS JS API async loader.'));
+    $this->assertRaw($bs_js_file, t('Found reference to BS JS API file.'));
+
+    // Revert to the default configuration.
+    $edit = array(
+      'statistics_enable_access_log' => BETTER_STATISTICS_ACCESSLOG_DEFAULT,
+    );
+    $this->drupalPost($this->stats_admin, $edit, t('Save configuration'));
+
+    // Check that client-side only mode does not log any data for both
+    // HTML-based and callback-based URLs from the server side.
+    $edit = array(
+      'statistics_count_content_views' => BETTER_STATISTICS_ENTITY_VIEW_CLIENT,
+    );
+    $this->drupalPost($this->stats_admin, $edit, t('Save configuration'));
+    db_truncate('node_counter')->execute();
+    $this->drupalGet('node/' . $this->node->nid);
+    $query = db_query('SELECT * FROM {node_counter} WHERE nid=:nid AND daycount=1', array(':nid' => $this->node->nid));
+    $rows = $query->rowCount();
+    $this->assertTrue($rows == 0, t('Entity View data not collected server-side when in client-side only mode.'));
+
+    // Ensure the BS JS API snippet and file are included on the page.
+    $js_cache = variable_get('drupal_js_cache_files');
+    $bs_js_file = file_create_url($js_cache[key($js_cache)]);
+    $this->assertRaw("w['BetterStatsObj']", t('Found reference to BS JS API async loader.'));
+    $this->assertRaw($bs_js_file, t('Found reference to BS JS API file.'));
+
+    // Revert to the default configuration.
+    $edit = array(
+      'statistics_count_content_views' => BETTER_STATISTICS_ENTITY_VIEW_DEFAULT,
+    );
+    $this->drupalPost($this->stats_admin, $edit, t('Save configuration'));
   }
 
   /**
@@ -309,5 +385,148 @@ class BetterStatisticsTest extends DrupalWebTestCase {
 
     // Reset the DNT configuration.
     variable_set('statistics_access_log_restrictions_dnt', FALSE);
+
+    // Ensure that POSTing to the Accesslog callback creates a valid entry.
+    db_truncate('accesslog')->execute();
+    $this->betterStatisticsPost($this->ajax_accesslog);
+    $query = db_query('SELECT * FROM {accesslog}');
+    $rows = $query->rowCount();
+    $this->assertTrue($rows == 1, t('Accesslog data collected via AJAX callback.'));
+
+    // Ensure data POSTed to the Accesslog callback overrides server-side data.
+    $custom_path = 'custom/path';
+    $this->betterStatisticsPost($this->ajax_accesslog, array('path' => $custom_path));
+    $query = db_query('SELECT * FROM {accesslog} WHERE path = :path', array(':path' => $custom_path));
+    $rows = $query->rowCount();
+    $this->assertTrue($rows == 1, t('Accesslog server-side data successfully overridden by JSON overrides.'));
+
+    // Ensure that data POSTed to the Accesslog callback that doesn't correspond
+    // to a field is safely ignored.
+    db_truncate('accesslog')->execute();
+    $this->betterStatisticsPost($this->ajax_accesslog, array('fake_field' => 'fake data'));
+    $query = db_query('SELECT * FROM {accesslog}');
+    $rows = $query->rowCount();
+    $this->assertTrue($rows == 1, t('Irrelevant accesslog data sucessfully ignored on AJAX callback.'));
+
+    // Ensure that when cache is enabled in mixed mode, duplicate entries are
+    // not created because hook_exit() is still run.
+    $this->drupalLogout();
+    variable_set('cache', 1);
+    variable_set('statistics_enable_access_log', BETTER_STATISTICS_ACCESSLOG_MIXED);
+    db_truncate('accesslog')->execute();
+    $this->drupalGet('node');
+    $this->drupalGet('node');
+    $query = db_query('SELECT * FROM {accesslog}');
+    $rows = $query->rowCount();
+    $this->assertTrue($rows == 0, t('Accesslog data not collected in mixed mode when cache is enabled.'));
+    db_truncate('accesslog')->execute();
+    variable_set('statistics_enable_access_log', BETTER_STATISTICS_ACCESSLOG_CLIENT);
+    $this->drupalGet('node');
+    $this->drupalGet('node');
+    $query = db_query('SELECT * FROM {accesslog}');
+    $rows = $query->rowCount();
+    $this->assertTrue($rows == 0, t('Accesslog data not collected in client-side mode when cache is enabled.'));
+    variable_set('cache', 0);
+
+    // Ensure that data POSTed to the Entity View callback creates a valid entry.
+    $entity_view_data = array(
+      'entity_type' => 'node',
+      'entity_id' => 1,
+    );
+    db_truncate('node_counter')->execute();
+    $this->betterStatisticsPost($this->ajax_entityview, $entity_view_data);
+    $query = db_query('SELECT * FROM {node_counter} WHERE nid=1 AND daycount=1');
+    $rows = $query->rowCount();
+    $this->assertTrue($rows == 1, t('Entity View data collected via AJAX callback.'));
+    db_truncate('node_counter')->execute();
+    $this->betterStatisticsPost($this->ajax_entityview, $entity_view_data);
+    $query = db_query('SELECT * FROM {node_counter} WHERE nid=1 AND daycount=1');
+    $rows = $query->rowCount();
+    $this->assertTrue($rows == 1, t('Entity View data collected via AJAX callback.'));
+
+    // Ensure that when cache is enabled in mixed mode, duplicate entries are
+    // not created because hook_exit() is still run.
+    variable_set('cache', 1);
+    variable_set('statistics_count_content_views', BETTER_STATISTICS_ENTITY_VIEW_CLIENT);
+    db_truncate('node_counter')->execute();
+    $this->drupalGet('node/' . $this->node->nid);
+    $this->drupalGet('node/' . $this->node->nid);
+    $query = db_query('SELECT * FROM {node_counter} WHERE nid=:nid', array(':nid' => $this->node->nid));
+    $rows = $query->rowCount();
+    $this->assertTrue($rows == 0, t('Entity View data not collected in client-side only mode when cache is enabled.'));
+    variable_set('cache', 0);
+  }
+
+  /**
+   * Execute a POST request against a Drupal path with a JSON payload.
+   *
+   * @param $path
+   *   Endpoint against which to POST. Either a Drupal path or an absolute path.
+   * @param $data
+   *   Data in an associative array. This will be JSON encoded.
+   * @param $options
+   *   Options to be forwarded to url().
+   * @param $headers
+   *   An array containing additional HTTP request headers, each formatted as
+   *   "name: value".
+   */
+  protected function betterStatisticsPost($path, array $data = array(), array $options = array(), array $headers = array()) {
+    $url = $this->getAbsoluteUrl(url($path, $options));
+    $post = drupal_json_encode($data);
+    $headers[] = 'Content-Type: application/json; charset=utf-8';
+    $headers[] = 'Content-Length: ' . strlen($post);
+
+    $out = $this->simpleCurlExec(array(
+      CURLOPT_URL => $url,
+      CURLOPT_POST => TRUE,
+      CURLOPT_POSTFIELDS => $post,
+      CURLOPT_HTTPHEADER => $headers,
+    ));
+
+    $this->verbose('POST request to: ' . $url .
+      '<hr />Data: ' . highlight_string('<?php ' . var_export($data, TRUE), TRUE) .
+      '<hr />' . $out);
+
+    return $out;
+  }
+
+  /**
+   * @see DrupalWebTestCase::curlExec()
+   */
+  protected function simpleCurlExec($curl_options, $redirect = FALSE) {
+    $this->curlInitialize();
+    if (!empty($curl_options[CURLOPT_URL]) && strpos($curl_options[CURLOPT_URL], '#')) {
+      $original_url = $curl_options[CURLOPT_URL];
+      $curl_options[CURLOPT_URL] = strtok($curl_options[CURLOPT_URL], '#');
+    }
+
+    $url = empty($curl_options[CURLOPT_URL]) ? curl_getinfo($this->curlHandle, CURLINFO_EFFECTIVE_URL) : $curl_options[CURLOPT_URL];
+
+    if (!empty($curl_options[CURLOPT_POST])) {
+      $curl_options[CURLOPT_HTTPHEADER][] = 'Expect:';
+    }
+    curl_setopt_array($this->curlHandle, $this->additionalCurlOptions + $curl_options);
+
+    if (!$redirect) {
+      // Reset headers, the session ID and the redirect counter.
+      $this->session_id = NULL;
+      $this->headers = array();
+      $this->redirect_count = 0;
+    }
+
+    $content = curl_exec($this->curlHandle);
+    $status = curl_getinfo($this->curlHandle, CURLINFO_HTTP_CODE);
+
+    if (in_array($status, array(300, 301, 302, 303, 305, 307)) && $this->redirect_count < variable_get('simpletest_maximum_redirects', 5)) {
+      if ($this->drupalGetHeader('location')) {
+        $this->redirect_count++;
+        $curl_options = array();
+        $curl_options[CURLOPT_URL] = $this->drupalGetHeader('location');
+        $curl_options[CURLOPT_HTTPGET] = TRUE;
+        return $this->simpleCurlExec($curl_options, TRUE);
+      }
+    }
+
+    $this->drupalSetContent($content, isset($original_url) ? $original_url : curl_getinfo($this->curlHandle, CURLINFO_EFFECTIVE_URL));
   }
 }

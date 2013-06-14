@@ -72,6 +72,18 @@ function better_statistics_uninstall() {
     }
   }
 
+  // If an accesslog mode-type was declared, return it to a simple on/off state.
+  $stats_enable_al = variable_get('statistics_enable_access_log', 0);
+  if ($stats_enable_al > 1) {
+    variable_set('statistics_enable_access_log', (int) (boolean) $stats_enable_al);
+  }
+
+  // If a content hit counter mode was declared, return it to its on/off state.
+  $stats_enable_ev = variable_get('statistics_count_content_views', 0);
+  if ($stats_enable_ev > 1) {
+    variable_set('statistics_count_content_views', (int) (boolean) $stats_enable_ev);
+  }
+
   variable_del('better_statistics_fields');
   variable_del('better_statistics_active_incs');
   variable_del('statistics_access_log_restrictions_cache');

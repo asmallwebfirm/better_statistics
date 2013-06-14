@@ -88,11 +88,15 @@ function hook_statistics_api() {
  *     is provided, Better Statistics will try and make its best guess on how to
  *     expose your field to Views. Note you can set this to FALSE to disable
  *     Views integration for your field.
+ *   - js: (optional) An associative array containing data to be passed to the
+ *     drupal_add_js() function, as well as a "data" key whose value can be
+ *     either an inline script or a file. See examples below.
  *
  * @see hook_statistics_api()
  * @see _better_statistics_get_custom_fields_by_module()
  * @see schemaapi
  * @see hook_views_data()
+ * @see drupal_add_js()
  */
 function hook_better_statistics_fields() {
   $fields = array();
@@ -112,6 +116,13 @@ function hook_better_statistics_fields() {
     ),
     // This will be called like: my_module_get_values('my_module_foo');
     'callback' => 'my_module_get_values',
+    // When client-side or mixed-mode accesslog data collection is enabled, this
+    // script will be included on all HTML pages. See the Statistics JS API for
+    // details on usage.
+    'js' => array(
+      'data' => 'path/to/my_module/js/foo.js',
+      'type' => 'file',
+    ),
   );
 
   // Another basic example with a few more options.
@@ -140,6 +151,13 @@ function hook_better_statistics_fields() {
       'title' => t('Bar', array(), array('langcode' => 'en')),
       'help' => t('A description about bar for site builders.', array(), array('langcode' => 'en')),
       // Default Views handlers will be guessed based on the schema type.
+    ),
+    // Any arguments passed to drupal_add_js()'s $options argument can be passed
+    // here as well.
+    'js' => array(
+      'data' => 'http://example.com/bar.js',
+      'type' => 'external',
+      'weight' => -10,
     ),
   );
 
@@ -179,6 +197,24 @@ function hook_better_statistics_fields() {
   );
 
   return $fields;
+}
+
+/**
+ * Declare additional Statistics API methods.
+ *
+ * @return
+ *   An array of JavaScript files keyed by method name. In the future, this hook
+ *   may be used more extensively (and unified with server-side implementations,
+ *   but for now, this is purely for Statistics JavaScript API implementations.
+ */
+function hook_better_statistics_methods() {
+  // A hypothetical event tracking method.
+  $methods['my_module_events'] = drupal_get_path('module', 'my_module') . '/js/events.js';
+
+  // A hypothetical conversion tracking method.
+  $methods['my_module_conversions'] = drupal_get_path('module', 'my_module') . '/conversions.js';
+
+  return $methods;
 }
 
 /**
@@ -227,6 +263,52 @@ function hook_better_statistics_log($data) {
     $tracker->addCustomVar($custom_var);
   }
   $tracker->trackPageview($page, $session, $visitor);
+}
+
+/**
+ * Handle statistics data passed via AJAX.
+ *
+ * This hook will be invoked for every call to the Statistics AJAX API callback,
+ * regardless of the type of data that is being passed. Also note that you can
+ * listen for a specific type of payload with hook_better_statistics_ajax_TYPE.
+ *
+ * @param $type
+ *   The type of data being handled. Better Statistics itself provides two, but
+ *   it's possible for any module, including your own, to provide more.
+ *   - accesslog
+ *   - entity_view
+ *   This value should correspond directly to what is used to call the bs()
+ *   facade in JS. For example, bs('accesslog') and bs('entity_view').
+ *
+ * @param $payload
+ *   An associative array of data to be logged, stored, or reacted upon in some
+ *   way. This data is the final result of merging server-side collected
+ *   defaults with values provided on the client-side. Note that the client-side
+ *   data takes precedence over the server-side data.
+ */
+function hook_better_statistics_ajax($type, $payload) {
+  switch ($type) {
+    case 'my_custom_type':
+      db_insert('my_custom_type_table')->fields($payload)->execute();
+      break;
+  }
+}
+
+/**
+ * Handle statistics data passed via AJAX for a specific type of data.
+ *
+ * This is identical to hook_better_statistics_ajax, but only invoked for a
+ * given type. This may be more appropriate if you're only implementing one
+ * custom data type as opposed to multiple custom data types.
+ *
+ * @param $payload
+ *   An associative array of data to be logged, stored, or reacted upon in some
+ *   way.
+ *
+ * @see hook_better_statistics_ajax()
+ */
+function hook_better_statistics_ajax_TYPE($payload) {
+  db_insert('my_TYPE_table')->fields($payload)->execute();
 }
 
 /**

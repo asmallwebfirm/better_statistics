@@ -12,6 +12,39 @@ define('BETTER_STATISTICS_API_VERSION', 1.0);
 define('BETTER_STATISTICS_API_MIN_VERSION', 1.0);
 
 /**
+ * Accesslog mode-type constants.
+ */
+define('BETTER_STATISTICS_ACCESSLOG_DISABLED', 0);
+define('BETTER_STATISTICS_ACCESSLOG_DEFAULT', 1);
+define('BETTER_STATISTICS_ACCESSLOG_MIXED', 2);
+define('BETTER_STATISTICS_ACCESSLOG_CLIENT', 3);
+
+/**
+ * Content counter mode constants.
+ */
+define('BETTER_STATISTICS_ENTITY_VIEW_DISABLED', 0);
+define('BETTER_STATISTICS_ENTITY_VIEW_DEFAULT', 1);
+define('BETTER_STATISTICS_ENTITY_VIEW_CLIENT', 2);
+
+
+/**
+ * Implements hook_menu().
+ */
+function better_statistics_menu() {
+  $items['statistics/ajax/%'] = array(
+    'title' => 'Statistics AJAX handler',
+    'page callback' => 'better_statistics_ajax_handler',
+    'file' => 'better_statistics.ajax.inc',
+    'page arguments' => array(2),
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+
+  return $items;
+}
+
+
+/**
  * Implements hook_menu_alter().
  *
  * Redirects core's link to access log details page.
@@ -21,6 +54,7 @@ function better_statistics_menu_alter(&$items) {
   $items['admin/reports/access/%']['module'] = 'better_statistics';
   $items['admin/reports/access/%']['file'] = 'better_statistics.admin.inc';
 }
+
 
 /**
  * Implements hook_schema_alter().
@@ -71,8 +105,12 @@ function better_statistics_ctools_plugin_api_hook_name() {
  */
 function better_statistics_exit() {
   // If statistics access log is set to run, run our code.
-  if (variable_get('statistics_enable_access_log', 0)) {
+  $mode = variable_get('statistics_enable_access_log', BETTER_STATISTICS_ACCESSLOG_DISABLED);
+  $default_mode = $mode == BETTER_STATISTICS_ACCESSLOG_DEFAULT;
+  $mixed_mode = $mode == BETTER_STATISTICS_ACCESSLOG_MIXED;
+  $client_mode = $mode == BETTER_STATISTICS_ACCESSLOG_CLIENT;
 
+  if ($default_mode || $mixed_mode) {
     // Force a recheck on cache status, just in case this function was called
     // before the X-Drupal-Cache header was set.
     $cache_status = better_statistics_served_from_cache(TRUE);
@@ -100,6 +138,85 @@ function better_statistics_exit() {
   // Keep statistics from writing additional data to the accesslog.
   global $conf;
   $conf['statistics_enable_access_log'] = FALSE;
+
+  // If client-side or mixed-mode are set, disable server-side node counter.
+  if ($mixed_mode || $client_mode) {
+    $conf['statistics_count_content_views'] = FALSE;
+  }
+}
+
+
+/**
+ * Implements hook_preprocess_html().
+ *
+ * If accesslog mode is set to client-side only or mixed mode, we add JS when
+ * HTML output is being rendered so that client-side data collection can be used
+ * for access statistics and/or node hit statistics.
+ */
+function better_statistics_preprocess_html(&$vars) {
+  $default_js = '';
+  $bs = variable_get('better_statistics_bs_var', 'bs');
+  $bs_path = drupal_get_path('module', 'better_statistics');
+
+  // If the accesslog is set to client-side or mixed mode, do some processing.
+  $al_mode = variable_get('statistics_enable_access_log', BETTER_STATISTICS_ACCESSLOG_DISABLED);
+  if ($al_mode == BETTER_STATISTICS_ACCESSLOG_MIXED || $al_mode == BETTER_STATISTICS_ACCESSLOG_CLIENT) {
+    // Grab all declared JS from Better Statistics fields and add them here
+    // at the JS_DEFAULT group level in such a way that they are all
+    // aggregated together.
+    $fields = variable_get('better_statistics_fields', better_statistics_get_default_fields());
+    $options = array(
+      'scope' => 'header',
+      'group' => JS_DEFAULT,
+      'every_page' => FALSE,
+    );
+    foreach ($fields as $field) {
+      if (isset($field['js']['data'])) {
+        $data = $field['js']['data'];
+        unset($field['js']['data']);
+        drupal_add_js($data, array_merge($field['js'], $options));
+      }
+    }
+
+    // Add BS JS API accesslog method. Note that internal path should always
+    // be the same for a page even when cached, so we manually add it here.
+    $default_js .= $bs . "('set', 'path', '" . truncate_utf8($_GET['q'], 255) . "'); ";
+    $default_js .= $bs . "('accesslog'); ";
+
+    // Prevent access statistics from being collected in hook_exit() so that
+    // duplicate statistics are never gathered when in mixed mode.
+    global $conf;
+    $conf['statistics_enable_access_log'] = BETTER_STATISTICS_ACCESSLOG_DISABLED;
+  }
+
+  // If enabled, add code to JS API implementation for the node counter.
+  // @see statistics_exit()
+  $ev_mode = variable_get('statistics_count_content_views', BETTER_STATISTICS_ENTITY_VIEW_DISABLED);
+  if ($ev_mode == BETTER_STATISTICS_ENTITY_VIEW_CLIENT) {
+    // We are counting content views.
+    if (arg(0) == 'node' && is_numeric(arg(1)) && arg(2) == NULL) {
+      // Add a call to the method.
+      $default_js .= $bs . "('entity_view', 'node', " . arg(1) . "); ";
+
+      // Prevent the node counter from being triggered in hook_exit() so that
+      // duplicate statistics are never gathered when in mixed mode.
+      global $conf;
+      $conf['statistics_count_content_views'] = FALSE;
+    }
+  }
+
+  // If any BS JS API methods have been added to the request, add the API.
+  $api_added = better_statistics_add_js_api();
+
+  // Add a default implementation of the BS JS API.
+  if ($api_added && !empty($default_js)) {
+    $default_js = preg_replace('!\s+!', ' ', $default_js);
+    drupal_add_js($default_js, array(
+      'type' => 'inline',
+      'group' => JS_THEME,
+      'weight' => 25,
+    ));
+  }
 }
 
 
@@ -124,6 +241,7 @@ function better_statistics_views_api() {
 function better_statistics_flush_caches() {
   module_load_include('inc', 'better_statistics', 'better_statistics.admin');
   _better_statistics_update_fields();
+  _better_statistics_update_methods();
 
   return array();
 }
@@ -194,6 +312,10 @@ function better_statistics_get_default_fields() {
         'schema' => $schema,
         'views_field' => FALSE,
         'callback' => 'better_statistics_get_field_value',
+        'js' => array(
+          'data' => dirname(drupal_get_filename('module', 'better_statistics')) . '/js/fields/core.js',
+          'type' => 'file',
+        ),
       );
     }
   }
@@ -300,4 +422,73 @@ function better_statistics_served_from_cache($recheck = FALSE) {
   }
 
   return $cached;
+}
+
+
+/**
+ * Add the Better Statistics JS API file to the current request.
+ *
+ * @return
+ *   TRUE if the BS JS API file was added successfully to the request, or FALSE
+ *   if the API file was not added to the request.
+ */
+function better_statistics_add_js_api() {
+  static $js_added = FALSE;
+  $file = &drupal_static(__FUNCTION__, FALSE);
+  $methods = variable_get('better_statistics_methods', array());
+
+  // No need to run this if no methods have been added.
+  if (!empty($methods)) {
+    // If the file URI isn't yet known, attempt to build the file.
+    if (!$file) {
+      // Prepend the BS JS API init file to the methods array.
+      $bs_path = drupal_get_path('module', 'better_statistics');
+      array_unshift($methods, $bs_path . '/js/better_statistics.init.js');
+
+      // Append the BS JS API exec file to the methods array.
+      $methods[] = $bs_path . '/js/better_statistics.exec.js';
+
+      // Prepare all files for use in drupal_build_js_cache().
+      $js_files = array();
+      foreach ($methods as $file) {
+        $js_files[$file] = array(
+          'preprocess' => TRUE,
+          'data' => $file,
+        );
+      }
+
+      // Build the JS cache file.
+      $uri = drupal_build_js_cache($js_files);
+
+      // If the file was created successfully, generate the URL.
+      if ($uri) {
+        $file = file_create_url($uri);
+      }
+    }
+
+    // If the JS hasn't been added yet, add it to the request.
+    if (!$js_added) {
+      $bs = variable_get('better_statistics_bs_var', 'bs');
+      $js = preg_replace('!\s+!', ' ', "(function(w,d,s,u,v,a,m) {w['BetterStatsObj'] = v;
+        w[v] = w[v] ||
+        function() {(w[v].q = w[v].q || []).push(arguments)};
+        w[v]('set', 'i', 1 * new Date());
+        w[v]('set', 'basePath', '" . base_path() . "');
+        a=d.createElement(s),
+        m=d.getElementsByTagName(s)[0];
+        a.src=u;
+        a.async=1;
+        m.parentNode.insertBefore(a,m);})(window,document,'script','" . $file . "','" . $bs . "');");
+
+      drupal_add_js($js, array(
+        'type' => 'inline',
+        'scope' => 'header',
+        'group' => JS_LIBRARY,
+        'weight' => -20,
+      ));
+      $js_added = TRUE;
+    }
+  }
+
+  return $js_added;
 }

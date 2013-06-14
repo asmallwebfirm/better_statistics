@@ -11,10 +11,25 @@
  */
 function _better_statistics_form_statistics_settings_form_alter(&$form, &$form_state, $form_id) {
   // Alter the access log settings to indicate a requirement.
-  $log_description = &$form['access']['statistics_enable_access_log']['#description'];
-  $log_description .= ' ' . t('Also required by the Better Statistics module.');
+  $accesslog_enabler = &$form['access']['statistics_enable_access_log'];
+  $accesslog_enabler['#description'] .= ' ' . t('Also required by the Better Statistics module.');
+  $accesslog_enabler['#type'] = 'radios';
+  $accesslog_enabler['#options'] = array(
+    BETTER_STATISTICS_ACCESSLOG_DISABLED => t('Do not log access statistics'),
+    BETTER_STATISTICS_ACCESSLOG_DEFAULT => t('Log all requests served by Drupal (those served by Boost/Varnish/etc. will not be logged)'),
+    BETTER_STATISTICS_ACCESSLOG_CLIENT => t('Log only HTML page views served to JS-enabled browsers, including those served by Boost/Varnish/etc.'),
+    BETTER_STATISTICS_ACCESSLOG_MIXED => t('Log HTML page views served to JS-enabled browsers and all other non-HTML requests served by Drupal'),
+  );
 
   $form['access']['#weight'] = -10;
+
+  $content_enabler = &$form['content']['statistics_count_content_views'];
+  $content_enabler['#type'] = 'radios';
+  $content_enabler['#options'] = array(
+    BETTER_STATISTICS_ENTITY_VIEW_DISABLED => t('Do not collect content hit statistics'),
+    BETTER_STATISTICS_ENTITY_VIEW_DEFAULT => t('Collect all requests to content pages'),
+    BETTER_STATISTICS_ENTITY_VIEW_CLIENT => t('Collect content statistics only when served to JS-enabled browsers'),
+  );
 
   // Create a fieldset for data collection settings.
   $form['better_statistics'] = array(
@@ -27,7 +42,7 @@ function _better_statistics_form_statistics_settings_form_alter(&$form, &$form_s
     // Only show this fieldset if the accesslog is enabled.
     '#states' => array(
       'visible' => array(
-        ':input[name="statistics_enable_access_log"]' => array('checked' => TRUE),
+        ':input[name="statistics_enable_access_log"]' => array('!value' => '0'),
       ),
     ),
   );
@@ -115,7 +130,7 @@ function _better_statistics_form_statistics_settings_form_alter(&$form, &$form_s
     // Only show this fieldset if the accesslog is enabled.
     '#states' => array(
       'visible' => array(
-        ':input[name="statistics_enable_access_log"]' => array('checked' => TRUE),
+        ':input[name="statistics_enable_access_log"]' => array('!value' => '0'),
       ),
     ),
   );
@@ -315,6 +330,7 @@ function better_statistics_enable_fields($fields) {
 
   // It can be convenient to call the field update function after configuration.
   _better_statistics_update_fields();
+  _better_statistics_update_methods();
 
   // Clear the Views data cache so fields are registered.
   if (module_exists('views')) {
@@ -380,6 +396,7 @@ function better_statistics_disable_fields($fields) {
 
   // It can be convenient to call the field update function after configuration.
   _better_statistics_update_fields();
+  _better_statistics_update_methods();
 
   // Clear the Views data cache so fields are registered.
   if (module_exists('views')) {
@@ -405,7 +422,10 @@ function _better_statistics_update_fields() {
   // Attempt to get all fields, including customizations from other modules.
   $active = variable_get('better_statistics_fields', FALSE);
   $customizations = _better_statistics_get_custom_fields_by_module();
-  $available_fields = array_keys(better_statistics_get_default_fields());
+
+  // Manually include Core statistics' fields.
+  $customizations['statistics'] = better_statistics_get_default_fields();
+  $available_fields = array();
 
   // There's no reason for this to run if no custom fields are installed.
   if (!$active) {
@@ -429,6 +449,11 @@ function _better_statistics_update_fields() {
         // Write through the location of the callback.
         if (isset($field_data['_file'])) {
           $active[$field]['_file'] = $field_data['_file'];
+        }
+
+        // Write through BS JS API changes.
+        if (isset($field_data['js'])) {
+          $active[$field]['js'] = $field_data['js'];
         }
 
         // Check for updates to the schema.
@@ -488,6 +513,22 @@ function _better_statistics_update_fields() {
     $active_incs[] = $api_info['file_required'];
   }
   variable_set('better_statistics_active_incs', $active_incs);
+}
+
+
+/**
+ * Rebuilds the Better Statistics Methods variable based on entries provided by
+ * implementations of hook_better_statistics_methods(). This is kept here and
+ * run only occasionally because method additions are rare and do not need to be
+ * re-generated dynamically at run time on every request.
+ */
+function _better_statistics_update_methods() {
+  $methods = module_invoke_all('better_statistics_methods');
+
+  // Only save off the methods if there are any.
+  if (!empty($methods)) {
+    variable_set('better_statistics_methods', $methods);
+  }
 }
 
 

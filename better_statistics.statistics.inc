@@ -11,6 +11,7 @@
  */
 function better_statistics_better_statistics_fields() {
   $fields = array();
+  $path = drupal_get_path('module', 'better_statistics');
 
   // Pass all user-facing strings through t(), but always use English when first
   // declaring fields. They will be run through t() normally on output.
@@ -29,6 +30,10 @@ function better_statistics_better_statistics_fields() {
       'title' => t('Cache status', array(), $en),
       'help' => t('The cache status of the page (HIT, MISS, or NULL).', array(), $en),
     ),
+    'js' => array(
+      'data' => $path . '/js/fields/custom.js',
+      'type' => 'file',
+    ),
   );
 
   // Declare a user agent field.
@@ -43,6 +48,10 @@ function better_statistics_better_statistics_fields() {
     'views_field' => array(
       'title' => t('User-agent', array(), $en),
       'help' => t('User-agent string of the user who visited your page.', array(), $en),
+    ),
+    'js' => array(
+      'data' => $path . '/js/fields/custom.js',
+      'type' => 'file',
     ),
   );
 
@@ -61,9 +70,26 @@ function better_statistics_better_statistics_fields() {
       'title' => t('Peak memory', array(), $en),
       'help' => t('Size in bytes of the peak memory allocated for the request.', array(), $en),
     ),
+    'js' => array(
+      'data' => $path . '/js/fields/custom.js',
+      'type' => 'file',
+    ),
   );
 
   return $fields;
+}
+
+
+/**
+ * Implements hook_better_statistics_methods().
+ */
+function better_statistics_better_statistics_methods() {
+  $mod_path = drupal_get_path('module', 'better_statistics');
+
+  $methods['accesslog'] = $mod_path . '/js/methods/better_statistics.accesslog.js';
+  $methods['entity_view'] = $mod_path . '/js/methods/better_statistics.entity_view.js';
+
+  return $methods;
 }
 
 
@@ -183,6 +209,13 @@ function better_statistics_better_statistics_prelog() {
       better_statistics_request_is_loggable(FALSE);
     }
   }
+
+  // If mixed-mode logging is enabled, check the page cache status.
+  $mixed_mode = variable_get('statistics_enable_access_log', BETTER_STATISTICS_ACCESSLOG_DISABLED) == BETTER_STATISTICS_ACCESSLOG_MIXED;
+  if ($mixed_mode && $cache_status) {
+    better_statistics_request_is_loggable(FALSE);
+    return;
+  }
 }
 
 
@@ -207,5 +240,56 @@ function better_statistics_better_statistics_log($data) {
       // Log the error.
       watchdog('better statistics', 'There was an error collecting statistics data:<br /><br />@error', array('@error' => $e->getMessage()), WATCHDOG_ERROR);
     }
+  }
+}
+
+
+/**
+ * Implements hook_better_statistics_ajax().
+ */
+function better_statistics_better_statistics_ajax($type, $payload) {
+  switch ($type) {
+    // @todo When API backwards compatibility can be broken, there should be no
+    // need to duplicate this code from hook_exit().
+    case 'accesslog':
+      // Allow all modules to react before logging begins.
+      module_invoke_all('better_statistics_prelog');
+
+      // Get all declared fields and their computed values.
+      $fields = better_statistics_get_fields_data();
+
+      // Pluck only values passed that correspond to statistics fields that are
+      // actually configured, then sanitize them.
+      $configured_from_ajax = array_intersect_key($payload, $fields);
+      foreach ($configured_from_ajax as &$value) {
+        $value = filter_xss($value);
+      }
+
+      // Merge values from AJAX fields into server-side generated fields.
+      $payload = array_merge($fields, $configured_from_ajax);
+
+      // Allow modules to log statistics data.
+      module_invoke_all('better_statistics_log', $payload);
+      break;
+
+    case 'entity_view':
+      $entity_type = isset($payload['entity_type']) ? $payload['entity_type'] : '';
+      $entity_id = isset($payload['entity_id']) ? $payload['entity_id'] : '';
+      $timestamp = isset($payload['timestamp']) ? $payload['timestamp'] : REQUEST_TIME;
+
+      if ($entity_type == 'node' && is_numeric($entity_id)) {
+        // A node has been viewed, so update the node's counters.
+        db_merge('node_counter')
+          ->key(array('nid' => $payload['entity_id']))
+          ->fields(array(
+            'daycount' => 1,
+            'totalcount' => 1,
+            'timestamp' => $timestamp,
+          ))
+          ->expression('daycount', 'daycount + 1')
+          ->expression('totalcount', 'totalcount + 1')
+          ->execute();
+      }
+      break;
   }
 }
