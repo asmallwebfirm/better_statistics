@@ -5,3 +5,7 @@ core = 7.x
 dependencies[] = ctools
 dependencies[] = statistics
 files[] = better_statistics.test
+
+files[] = views/better_statistics_handler_field_block_ip.inc
+files[] = views/better_statistics_handler_argument_path.inc
+files[] = views/better_statistics_handler_field_time_interval_opt.inc

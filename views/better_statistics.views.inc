@@ -39,4 +39,72 @@ function better_statistics_views_data_alter(&$data) {
       $data['accesslog'][$field] = $field_data['views_field'];
     }
   }
+
+  // Add a contextual filter handler for the path.
+  $data['accesslog']['path']['argument']['handler'] = 'better_statistics_handler_argument_path';
+
+  // Add float to timer to expose rounding options; alter the field handler to
+  // our custom handler to allow the timer to be displayed as a time interval.
+  $data['accesslog']['timer']['field']['float'] = TRUE;
+  $data['accesslog']['timer']['field']['handler'] = 'better_statistics_handler_field_time_interval_opt';
+}
+
+
+/**
+ * Implements hook_views_data().
+ */
+function better_statistics_views_data() {
+  $data['blocked_ips']['table']['group'] = t('Blocked IPs');
+
+  // For other base tables, explain how we join.
+  $data['blocked_ips']['table']['join'] = array(
+    'accesslog' => array(
+      'field' => 'ip',
+      'left_field' => 'hostname',
+    ),
+  );
+
+  // blocked_ips.iid
+  $data['blocked_ips']['iid'] = array(
+    'title' => t('Blocked IP ID'),
+    'help' => t('The unique ID of the IP block.'),
+    'field' => array(
+      'handler' => 'views_handler_field_numeric',
+      'click sortable' => TRUE,
+    ),
+    'argument' => array(
+      'handler' => 'views_handler_argument_numeric',
+      'name field' => 'iid',
+      'numeric' => TRUE,
+    ),
+    'filter' => array(
+      'handler' => 'views_handler_filter_numeric',
+    ),
+    'sort' => array(
+      'handler' => 'views_handler_sort',
+    ),
+  );
+
+  // blocked_ips.ip
+  $data['blocked_ips']['ip'] = array(
+    'title' => t('Block IP'),
+    'help' => t('A link to block or unblock the IP from the site.'),
+    'field' => array(
+      'handler' => 'better_statistics_handler_field_block_ip',
+      'click sortable' => FALSE,
+    ),
+  );
+
+  return $data;
+}
+
+
+/**
+ * Implements hook_views_pre_render().
+ */
+function better_statistics_views_pre_render(&$view) {
+  // Replace %accesslog_interval with a properly formatted interval in titles.
+  $title = $view->get_title();
+  $interval = format_interval(variable_get('statistics_flush_accesslog_timer', 259200));
+  $view->set_title(format_string($title, array('%accesslog_interval' => $interval)));
 }
