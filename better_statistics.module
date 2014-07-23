@@ -495,3 +495,13 @@ function better_statistics_add_js_api() {
 
   return $js_added;
 }
+
+// Declare API compatibility on behalf of core modules:
+
+if (!function_exists('node_statistics_api')) {
+  function node_statistics_api() {
+    $api = better_statistics_statistics_api();
+    $api['path'] = $api['path'] . '/modules';
+    return $api;
+  }
+}
