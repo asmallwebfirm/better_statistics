@@ -505,3 +505,11 @@ if (!function_exists('node_statistics_api')) {
     return $api;
   }
 }
+
+if (!function_exists('user_statistics_api')) {
+  function user_statistics_api() {
+    $api = better_statistics_statistics_api();
+    $api['path'] = $api['path'] . '/modules';
+    return $api;
+  }
+}
