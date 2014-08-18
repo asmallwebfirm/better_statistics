@@ -513,3 +513,11 @@ if (!function_exists('user_statistics_api')) {
     return $api;
   }
 }
+
+if (!function_exists('taxonomy_statistics_api')) {
+  function taxonomy_statistics_api() {
+    $api = better_statistics_statistics_api();
+    $api['path'] = $api['path'] . '/modules';
+    return $api;
+  }
+}
